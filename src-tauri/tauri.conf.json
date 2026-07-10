@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Desktop Sticky Note",
+  "mainBinaryName": "stickynote",
+  "version": "1.0.0",
+  "identifier": "com.oxing.desktopsticky",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Desktop Sticky Note",
+        "width": 360,
+        "height": 520,
+        "minWidth": 300,
+        "minHeight": 420,
+        "decorations": false,
+        "transparent": true,
+        "resizable": false,
+        "center": false,
+        "shadow": false,
+        "alwaysOnBottom": true,
+        "skipTaskbar": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
+    }
+  }
+}
