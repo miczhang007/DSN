@@ -70,6 +70,15 @@
               </select>
             </label>
           </div>
+          <label class="menu-toggle">
+            <span>开机自启动</span>
+            <input
+              :checked="autoStartEnabled"
+              type="checkbox"
+              role="switch"
+              @change="changeAutoStart($event.target.checked)"
+            />
+          </label>
           <button type="button" @click="openAbout">产品简介</button>
           <button type="button" class="danger" @click="exitApp">退出</button>
         </nav>
@@ -91,8 +100,8 @@
             ></button>
             <button class="task-main" type="button" @click.stop="openTask(task)">
               <span class="task-title">{{ task.title }}</span>
-              <span class="task-meta">
-                <span>{{ formatDeadline(task.deadline_at) }}</span>
+              <span v-if="task.deadline_at || task.is_urgent" class="task-meta">
+                <span v-if="task.deadline_at">{{ formatDeadline(task.deadline_at) }}</span>
                 <span v-if="task.is_urgent" class="urgent-chip">紧急</span>
               </span>
             </button>
@@ -264,7 +273,7 @@ import { invoke } from "@tauri-apps/api/core";
 const repositoryUrl = "https://github.com/miczhang007/DSN.git";
 const productName = "桌面便签-单机版";
 const productFullName = "桌面便签-单机版 / StickyNote";
-const versionLabel = "v1.0 - 2026-07-10 16:10";
+const versionLabel = "v1.0 - 2026-07-10 18:00";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -296,6 +305,7 @@ const editUserDraft = ref("");
 const noteSize = ref("medium");
 const noteTheme = ref("yellow");
 const notePosition = ref("top-right");
+const autoStartEnabled = ref(false);
 const activeTasks = ref([]);
 const archivedTasks = ref([]);
 const selectedTask = ref(null);
@@ -325,14 +335,21 @@ onMounted(async () => {
   noteSize.value = localStorage.getItem("note-size") || "medium";
   noteTheme.value = localStorage.getItem("note-theme") || "yellow";
   notePosition.value = localStorage.getItem("note-position") || "top-right";
-  await invoke("set_note_size", { size: noteSize.value });
-  await invoke("set_note_position", { position: notePosition.value });
   window.addEventListener("keydown", handleKeydown);
+
   if (currentUser.value) {
     await refreshActiveTasks();
   } else {
     view.value = "users";
   }
+
+  requestAnimationFrame(() => {
+    const layoutUpdates = [
+      invoke("set_note_size", { size: noteSize.value }),
+      invoke("set_note_position", { position: notePosition.value }),
+    ];
+    Promise.allSettled([...layoutUpdates, refreshAutoStartState()]);
+  });
 });
 
 onUnmounted(() => {
@@ -561,6 +578,25 @@ async function changeNotePosition(position) {
   localStorage.setItem("note-position", position);
   menuOpen.value = false;
   await invoke("set_note_position", { position });
+}
+
+async function changeAutoStart(enabled) {
+  const previous = autoStartEnabled.value;
+  autoStartEnabled.value = enabled;
+  try {
+    autoStartEnabled.value = await invoke("set_auto_start_enabled", { enabled });
+  } catch (err) {
+    autoStartEnabled.value = previous;
+    window.alert(err || "设置开机自启动失败");
+  }
+}
+
+async function refreshAutoStartState() {
+  try {
+    autoStartEnabled.value = await invoke("is_auto_start_enabled");
+  } catch {
+    autoStartEnabled.value = false;
+  }
 }
 
 async function exitApp() {

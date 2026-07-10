@@ -2,8 +2,12 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use std::fs;
+use std::process::Command;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, PhysicalPosition, State};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State};
+
+const AUTO_START_REG_PATH: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+const AUTO_START_VALUE_NAME: &str = "StickyNote";
 
 struct DbState {
     conn: Mutex<Connection>,
@@ -67,6 +71,8 @@ pub fn run() {
             delete_user_data,
             set_note_size,
             set_note_position,
+            is_auto_start_enabled,
+            set_auto_start_enabled,
             exit_app
         ])
         .run(tauri::generate_context!())
@@ -402,6 +408,55 @@ fn set_note_position(app: AppHandle, position: String) -> Result<(), String> {
         .get_webview_window("main")
         .ok_or_else(|| "找不到主窗口".to_string())?;
     place_window(&window, &position)
+}
+
+#[tauri::command]
+fn is_auto_start_enabled() -> Result<bool, String> {
+    let status = Command::new("reg")
+        .args(["query", AUTO_START_REG_PATH, "/v", AUTO_START_VALUE_NAME])
+        .status()
+        .map_err(|err| format!("读取自启动状态失败：{err}"))?;
+    Ok(status.success())
+}
+
+#[tauri::command]
+fn set_auto_start_enabled(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    let status = if enabled {
+        let exe_path = std::env::current_exe()
+            .map_err(|err| format!("获取程序路径失败：{err}"))?
+            .to_string_lossy()
+            .to_string();
+        let launch_value = format!("\"{exe_path}\"");
+        Command::new("reg")
+            .args([
+                "add",
+                AUTO_START_REG_PATH,
+                "/v",
+                AUTO_START_VALUE_NAME,
+                "/t",
+                "REG_SZ",
+                "/d",
+                &launch_value,
+                "/f",
+            ])
+            .status()
+    } else {
+        Command::new("reg")
+            .args(["delete", AUTO_START_REG_PATH, "/v", AUTO_START_VALUE_NAME, "/f"])
+            .status()
+    }
+    .map_err(|err| format!("设置自启动失败：{err}"))?;
+
+    if enabled && !status.success() {
+        return Err("开启自启动失败".to_string());
+    }
+    if !enabled && !status.success() {
+        return Ok(false);
+    }
+
+    app.emit("auto-start-changed", enabled)
+        .map_err(|err| err.to_string())?;
+    Ok(enabled)
 }
 
 #[tauri::command]
