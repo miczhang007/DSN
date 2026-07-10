@@ -261,7 +261,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
-const repositoryUrl = "待发布";
+const repositoryUrl = "https://github.com/miczhang007/DSN.git";
 const productName = "桌面便签-单机版";
 const productFullName = "桌面便签-单机版 / StickyNote";
 const versionLabel = "v1.0 - 2026-07-10 16:10";
