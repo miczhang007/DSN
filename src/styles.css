@@ -161,7 +161,7 @@ h1 {
 .history-item {
   border: 0;
   background: transparent;
-  cursor: pointer;
+  cursor: default;
 }
 
 .icon-button {
@@ -280,7 +280,7 @@ h1 {
   height: 19px;
   margin: 0;
   appearance: none;
-  cursor: pointer;
+  cursor: default;
   background: rgba(107, 84, 34, 0.16);
   border: 1px solid rgba(107, 84, 34, 0.18);
   border-radius: 999px;
@@ -375,7 +375,7 @@ h1 {
   border: 1.5px solid rgba(69, 54, 25, 0.58);
   border-radius: 50%;
   background: rgba(255, 249, 220, 0.2);
-  cursor: pointer;
+  cursor: default;
 }
 
 .complete-button:hover {
@@ -593,9 +593,8 @@ h1 {
 }
 
 .detail-actions {
-  padding: 12px 0;
+  padding: 0 0 12px;
   margin-bottom: 12px;
-  border-top: 1px solid rgba(107, 84, 34, 0.09);
   border-bottom: 1px solid rgba(107, 84, 34, 0.09);
 }
 

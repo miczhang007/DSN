@@ -260,17 +260,31 @@ fn update_task(
     state: State<DbState>,
     owner: String,
     task_id: String,
+    title: String,
     deadline_at: Option<String>,
     is_urgent: bool,
 ) -> Result<Task, String> {
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
     let owner = normalize_owner(&owner)?;
+    let trimmed_title = title.trim();
+    if trimmed_title.is_empty() {
+        return Err("任务标题不能为空".to_string());
+    }
     let task = query_task(&conn, &owner, &task_id)?;
     if task.archived_at.is_some() {
         return Err("已归档任务不能修改".to_string());
     }
 
     let now = now_string();
+    if task.title != trimmed_title {
+        insert_event(
+            &conn,
+            &task_id,
+            "title_changed",
+            Some(&task.title),
+            Some(trimmed_title),
+        )?;
+    }
     if task.deadline_at != deadline_at {
         insert_event(
             &conn,
@@ -293,10 +307,10 @@ fn update_task(
     conn.execute(
         "
         UPDATE tasks
-        SET deadline_at = ?1, is_urgent = ?2, updated_at = ?3
-        WHERE id = ?4 AND owner = ?5
+        SET title = ?1, deadline_at = ?2, is_urgent = ?3, updated_at = ?4
+        WHERE id = ?5 AND owner = ?6
         ",
-        params![deadline_at, bool_to_i64(is_urgent), now, task_id, owner],
+        params![trimmed_title, deadline_at, bool_to_i64(is_urgent), now, task_id, owner],
     )
     .map_err(|err| err.to_string())?;
     query_task(&conn, &owner, &task_id)

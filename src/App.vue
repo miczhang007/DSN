@@ -221,22 +221,26 @@
       </section>
 
       <section v-else-if="view === 'detail' && selectedTask" class="content detail-view" @click.stop>
-        <div class="detail-summary">
+        <div v-if="selectedTask.archived_at" class="detail-summary">
           <strong>{{ selectedTask.title }}</strong>
-          <span>{{ selectedTask.archived_at ? "已归档" : "待办" }}</span>
-          <span>截止：{{ formatDeadline(selectedTask.deadline_at) }}</span>
-          <span>紧急：{{ selectedTask.is_urgent ? "是" : "否" }}</span>
+          <span>已归档</span>
+          <span v-if="selectedTask.deadline_at">截止：{{ formatDeadline(selectedTask.deadline_at) }}</span>
+          <span v-if="selectedTask.is_urgent">紧急</span>
         </div>
         <div v-if="!selectedTask.archived_at" class="detail-actions">
           <label class="field compact">
-            <span>调整截止时间</span>
+            <span>任务内容</span>
+            <input v-model.trim="editDraft.title" type="text" maxlength="80" />
+          </label>
+          <label class="field compact">
+            <span>截止时间</span>
             <input v-model="editDraft.deadline" type="datetime-local" />
           </label>
           <label class="check-field">
             <input v-model="editDraft.isUrgent" type="checkbox" />
             <span>紧急</span>
           </label>
-          <button class="text-button" type="button" @click="saveTaskChanges">保存变更</button>
+          <button class="text-button" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">保存变更</button>
         </div>
         <div class="event-list">
           <h2>生命周期</h2>
@@ -273,7 +277,7 @@ import { invoke } from "@tauri-apps/api/core";
 const repositoryUrl = "https://github.com/miczhang007/DSN.git";
 const productName = "桌面便签-单机版";
 const productFullName = "桌面便签-单机版 / StickyNote";
-const versionLabel = "v1.0 - 2026-07-10 18:00";
+const versionLabel = "v1.0 - 2026-07-10 18:41";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -311,7 +315,7 @@ const archivedTasks = ref([]);
 const selectedTask = ref(null);
 const taskEvents = ref([]);
 const draft = reactive({ title: "", deadline: "", isUrgent: false });
-const editDraft = reactive({ deadline: "", isUrgent: false });
+const editDraft = reactive({ title: "", deadline: "", isUrgent: false });
 
 const viewTitle = computed(() => {
   const titles = {
@@ -421,6 +425,7 @@ async function openTask(task) {
   }
   menuOpen.value = false;
   selectedTask.value = task;
+  editDraft.title = task.title;
   editDraft.deadline = toLocalInputValue(task.deadline_at);
   editDraft.isUrgent = Boolean(task.is_urgent);
   taskEvents.value = await invoke("get_task_events", {
@@ -547,10 +552,12 @@ async function undoCompleteTask(taskId) {
 
 async function saveTaskChanges() {
   if (!selectedTask.value) return;
+  if (!editDraft.title) return;
   const deadlineAt = editDraft.deadline ? new Date(editDraft.deadline).toISOString() : null;
   await invoke("update_task", {
     owner: currentUser.value,
     taskId: selectedTask.value.id,
+    title: editDraft.title,
     deadlineAt,
     isUrgent: editDraft.isUrgent,
   });
@@ -634,6 +641,7 @@ function toLocalInputValue(value) {
 function eventText(event) {
   const labels = {
     created: "创建任务",
+    title_changed: `任务内容：${formatEventValue(event.before_value)} -> ${formatEventValue(event.after_value)}`,
     deadline_changed: `截止时间：${formatEventValue(event.before_value)} -> ${formatEventValue(event.after_value)}`,
     urgent_changed: `紧急标记：${formatBool(event.before_value)} -> ${formatBool(event.after_value)}`,
     completed: "完成任务",
