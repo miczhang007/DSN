@@ -19,7 +19,7 @@
 
 ## 联系方式
 
-- 开发者：miczhang007（个人开发者）
+- 开发者：miczhang（个人开发者）
 - 邮箱：miczhang007@qq.com
 - 源码仓库：https://github.com/miczhang007/DSN
 

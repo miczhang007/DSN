@@ -2,7 +2,7 @@
 name = "desktop-sticky-note"
 version = "1.0.0"
 description = "Desktop Sticky Note"
-authors = ["miczhang007"]
+authors = ["miczhang"]
 edition = "2021"
 
 [lib]

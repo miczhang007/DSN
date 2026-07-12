@@ -256,7 +256,7 @@
           <div><dt>产品名称</dt><dd>{{ productFullName }}</dd></div>
           <div><dt>当前版本</dt><dd>{{ versionLabel }}</dd></div>
           <div><dt>收费方式</dt><dd>本地版免费开源</dd></div>
-          <div><dt>开发者</dt><dd>miczhang007（个人开发者）</dd></div>
+          <div><dt>开发者</dt><dd>miczhang（个人开发者）</dd></div>
           <div><dt>数据说明</dt><dd>便签数据默认仅保存在本机，不上传至服务器</dd></div>
           <div><dt>服务规划</dt><dd>云同步服务将作为独立的可选订阅服务推出</dd></div>
           <div><dt>源码仓库</dt><dd><a :href="repositoryUrl" target="_blank" rel="noreferrer">GitHub 开源仓库</a></dd></div>
@@ -281,7 +281,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签-本地开源版";
 const productFullName = "桌面便签（本地开源版）/ StickyNote";
-const versionLabel = "v1.0 - 2026-07-12 14:03";
+const versionLabel = "v1.0 - 2026-07-12 17:11";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },

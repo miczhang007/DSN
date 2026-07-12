@@ -73,7 +73,7 @@
 - 当前形态：本地开源版
 - 开源方式：MIT License
 - 收费方式：本地版免费开源；未来云同步服务为独立可选订阅
-- 开发者：miczhang007（个人开发者）
+- 开发者：miczhang（个人开发者）
 - 联系方式：`miczhang007@qq.com`
 - 源码仓库地址：https://github.com/miczhang007/DSN
 
