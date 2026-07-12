@@ -640,6 +640,11 @@ h1 {
   word-break: break-word;
 }
 
+.about-view a {
+  color: inherit;
+  text-underline-offset: 2px;
+}
+
 .text-button {
   padding: 6px 8px;
   border-radius: 6px;

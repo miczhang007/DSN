@@ -2,7 +2,7 @@
 name = "desktop-sticky-note"
 version = "1.0.0"
 description = "Desktop Sticky Note"
-authors = ["Nanjing Oxing Network Technology Co., Ltd."]
+authors = ["miczhang007"]
 edition = "2021"
 
 [lib]

@@ -8,9 +8,9 @@
           v-if="view !== 'home'"
           class="text-button"
           type="button"
-          @click.stop="goHome"
+          @click.stop="handleBack"
         >
-          返回
+          {{ backButtonLabel }}
         </button>
         <h1
           v-if="viewTitle"
@@ -255,9 +255,12 @@
         <dl>
           <div><dt>产品名称</dt><dd>{{ productFullName }}</dd></div>
           <div><dt>当前版本</dt><dd>{{ versionLabel }}</dd></div>
-          <div><dt>收费方式</dt><dd>免费使用</dd></div>
-          <div><dt>开发者</dt><dd>南京欧星网路技术有限公司</dd></div>
-          <div><dt>源码仓库</dt><dd>{{ repositoryUrl }}</dd></div>
+          <div><dt>收费方式</dt><dd>本地版免费开源</dd></div>
+          <div><dt>开发者</dt><dd>miczhang007（个人开发者）</dd></div>
+          <div><dt>数据说明</dt><dd>便签数据默认仅保存在本机，不上传至服务器</dd></div>
+          <div><dt>服务规划</dt><dd>云同步服务将作为独立的可选订阅服务推出</dd></div>
+          <div><dt>源码仓库</dt><dd><a :href="repositoryUrl" target="_blank" rel="noreferrer">GitHub 开源仓库</a></dd></div>
+          <div><dt>隐私政策</dt><dd><a :href="privacyPolicyUrl" target="_blank" rel="noreferrer">查看隐私政策</a></dd></div>
           <div><dt>联系方式</dt><dd>miczhang007@qq.com</dd></div>
         </dl>
       </section>
@@ -274,10 +277,11 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
-const repositoryUrl = "https://github.com/miczhang007/DSN.git";
-const productName = "桌面便签-单机版";
-const productFullName = "桌面便签-单机版 / StickyNote";
-const versionLabel = "v1.0 - 2026-07-10 18:41";
+const repositoryUrl = "https://github.com/miczhang007/DSN";
+const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
+const productName = "桌面便签-本地开源版";
+const productFullName = "桌面便签（本地开源版）/ StickyNote";
+const versionLabel = "v1.0 - 2026-07-12 14:03";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -329,6 +333,14 @@ const viewTitle = computed(() => {
   return titles[view.value] || "";
 });
 
+const shouldExitFromUserManager = computed(() =>
+  view.value === "users" && !users.value.length && !userFormOpen.value,
+);
+
+const backButtonLabel = computed(() =>
+  shouldExitFromUserManager.value ? "退出" : "返回",
+);
+
 onMounted(async () => {
   currentUser.value = localStorage.getItem("current-user") || "";
   users.value = loadUsers();
@@ -343,8 +355,6 @@ onMounted(async () => {
 
   if (currentUser.value) {
     await refreshActiveTasks();
-  } else {
-    view.value = "users";
   }
 
   requestAnimationFrame(() => {
@@ -375,14 +385,20 @@ function handleKeydown(event) {
 }
 
 function goHome() {
-  if (!currentUser.value) {
-    view.value = "users";
-    return;
-  }
   view.value = "home";
   selectedTask.value = null;
   taskEvents.value = [];
-  refreshActiveTasks();
+  if (currentUser.value) {
+    refreshActiveTasks();
+  }
+}
+
+async function handleBack() {
+  if (shouldExitFromUserManager.value) {
+    await exitApp();
+    return;
+  }
+  goHome();
 }
 
 function openAdd() {

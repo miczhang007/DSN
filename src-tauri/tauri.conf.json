@@ -3,7 +3,7 @@
   "productName": "Desktop Sticky Note",
   "mainBinaryName": "stickynote",
   "version": "1.0.0",
-  "identifier": "com.oxing.desktopsticky",
+  "identifier": "com.miczhang007.stickynote",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
