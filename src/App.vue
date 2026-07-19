@@ -1,5 +1,5 @@
 ﻿<template>
-  <main class="app-shell" :class="[`size-${noteSize}`, `theme-${noteTheme}`]">
+  <main class="app-shell" :class="[`size-${noteSize}`, `theme-${noteTheme}`, { 'minimal-mode': minimalModeEnabled }]">
     <section class="note" :class="{ 'is-subview': view !== 'home' }" @click="closeMenu">
       <div class="pin-shadow"></div>
 
@@ -77,6 +77,15 @@
               type="checkbox"
               role="switch"
               @change="changeAutoStart($event.target.checked)"
+            />
+          </label>
+          <label class="menu-toggle">
+            <span>极简模式</span>
+            <input
+              :checked="minimalModeEnabled"
+              type="checkbox"
+              role="switch"
+              @change="changeMinimalMode($event.target.checked)"
             />
           </label>
           <button type="button" @click="openAbout">产品简介</button>
@@ -241,13 +250,33 @@
             <span>紧急</span>
           </label>
           <button class="text-button" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">保存变更</button>
+          <div class="detail-section progress-section">
+            <label class="field compact progress-field">
+              <span>进度记录</span>
+              <textarea
+                v-model.trim="progressDraft"
+                rows="2"
+                maxlength="240"
+                placeholder="记录当前进展、阻碍或下一步安排"
+              ></textarea>
+            </label>
+            <button class="text-button progress-submit" type="button" :disabled="!progressDraft" @click="saveTaskProgress">添加进度</button>
+          </div>
         </div>
         <div class="event-list">
           <h2>生命周期</h2>
-          <p v-for="event in taskEvents" :key="event.id">
+          <div v-for="event in taskEvents" :key="event.id" class="event-row">
             <time>{{ formatTime(event.created_at) }}</time>
             <span>{{ eventText(event) }}</span>
-          </p>
+            <button
+              v-if="event.event_type === 'progress_updated'"
+              class="text-button danger event-delete"
+              type="button"
+              @click="deleteTaskProgress(event)"
+            >
+              删除
+            </button>
+          </div>
         </div>
       </section>
 
@@ -255,10 +284,8 @@
         <dl>
           <div><dt>产品名称</dt><dd>{{ productFullName }}</dd></div>
           <div><dt>当前版本</dt><dd>{{ versionLabel }}</dd></div>
-          <div><dt>收费方式</dt><dd>本地版免费开源</dd></div>
           <div><dt>开发者</dt><dd>miczhang（个人开发者）</dd></div>
           <div><dt>数据说明</dt><dd>便签数据默认仅保存在本机，不上传至服务器</dd></div>
-          <div><dt>服务规划</dt><dd>云同步服务将作为独立的可选订阅服务推出</dd></div>
           <div><dt>源码仓库</dt><dd><a :href="repositoryUrl" target="_blank" rel="noreferrer">GitHub 开源仓库</a></dd></div>
           <div><dt>隐私政策</dt><dd><a :href="privacyPolicyUrl" target="_blank" rel="noreferrer">查看隐私政策</a></dd></div>
           <div><dt>联系方式</dt><dd>miczhang007@qq.com</dd></div>
@@ -271,6 +298,18 @@
       </footer>
     </section>
   </main>
+  <Teleport to="body">
+    <div v-if="confirmation" class="confirm-backdrop" @click.self="closeConfirmation">
+      <section class="confirm-dialog" role="alertdialog" aria-modal="true" :aria-labelledby="confirmation.titleId">
+        <h2 :id="confirmation.titleId">{{ confirmation.title }}</h2>
+        <p>{{ confirmation.message }}</p>
+        <div class="confirm-actions">
+          <button class="text-button" type="button" @click="closeConfirmation">取消</button>
+          <button class="text-button danger confirm-button" type="button" @click="confirmAction">确认删除</button>
+        </div>
+      </section>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -279,9 +318,9 @@ import { invoke } from "@tauri-apps/api/core";
 
 const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
-const productName = "桌面便签-本地开源版";
-const productFullName = "桌面便签（本地开源版）/ StickyNote";
-const versionLabel = "v1.0 - 2026-07-12 17:11";
+const productName = "桌面便签";
+const productFullName = "桌面便签 / StickyNote";
+const versionLabel = "v1.0.6 - 2026-07-17 17:45";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -314,12 +353,15 @@ const noteSize = ref("medium");
 const noteTheme = ref("yellow");
 const notePosition = ref("top-right");
 const autoStartEnabled = ref(false);
+const minimalModeEnabled = ref(false);
 const activeTasks = ref([]);
 const archivedTasks = ref([]);
 const selectedTask = ref(null);
 const taskEvents = ref([]);
 const draft = reactive({ title: "", deadline: "", isUrgent: false });
 const editDraft = reactive({ title: "", deadline: "", isUrgent: false });
+const progressDraft = ref("");
+const confirmation = ref(null);
 
 const viewTitle = computed(() => {
   const titles = {
@@ -351,6 +393,7 @@ onMounted(async () => {
   noteSize.value = localStorage.getItem("note-size") || "medium";
   noteTheme.value = localStorage.getItem("note-theme") || "yellow";
   notePosition.value = localStorage.getItem("note-position") || "top-right";
+  minimalModeEnabled.value = localStorage.getItem("minimal-mode") === "true";
   window.addEventListener("keydown", handleKeydown);
 
   if (currentUser.value) {
@@ -362,7 +405,11 @@ onMounted(async () => {
       invoke("set_note_size", { size: noteSize.value }),
       invoke("set_note_position", { position: notePosition.value }),
     ];
-    Promise.allSettled([...layoutUpdates, refreshAutoStartState()]);
+    Promise.allSettled([
+      ...layoutUpdates,
+      refreshAutoStartState(),
+      invoke("set_minimal_mode", { enabled: minimalModeEnabled.value }),
+    ]);
   });
 });
 
@@ -444,6 +491,7 @@ async function openTask(task) {
   editDraft.title = task.title;
   editDraft.deadline = toLocalInputValue(task.deadline_at);
   editDraft.isUrgent = Boolean(task.is_urgent);
+  progressDraft.value = "";
   taskEvents.value = await invoke("get_task_events", {
     owner: currentUser.value,
     taskId: task.id,
@@ -516,11 +564,14 @@ async function saveUserName(oldUser) {
 }
 
 async function deleteUser(user) {
-  const confirmed = window.confirm(
-    `确定删除用户“${user}”吗？\n\n删除后该用户的待办、历史任务和生命周期记录都将被永久删除，不能恢复。`
+  openConfirmation(
+    "删除用户",
+    `确定删除用户“${user}”吗？删除后该用户的待办、历史任务和生命周期记录都将被永久删除，不能恢复。`,
+    () => removeUser(user),
   );
-  if (!confirmed) return;
+}
 
+async function removeUser(user) {
   await invoke("delete_user_data", { owner: user });
   users.value = users.value.filter((item) => item !== user);
   saveUsers();
@@ -584,6 +635,55 @@ async function saveTaskChanges() {
   await openTask(updated);
 }
 
+async function saveTaskProgress() {
+  if (!selectedTask.value || !progressDraft.value) return;
+  await invoke("add_task_progress", {
+    owner: currentUser.value,
+    taskId: selectedTask.value.id,
+    progress: progressDraft.value,
+  });
+  const updated = await invoke("get_task", {
+    owner: currentUser.value,
+    taskId: selectedTask.value.id,
+  });
+  await openTask(updated);
+}
+
+async function deleteTaskProgress(event) {
+  if (!selectedTask.value) return;
+  const taskId = selectedTask.value.id;
+  openConfirmation("删除进度", "确定删除这条进度记录吗？此操作不能恢复。", () =>
+    removeTaskProgress(taskId, event.id),
+  );
+}
+
+async function removeTaskProgress(taskId, eventId) {
+  await invoke("delete_task_progress", {
+    owner: currentUser.value,
+    taskId,
+    eventId,
+  });
+  const updated = await invoke("get_task", {
+    owner: currentUser.value,
+    taskId,
+  });
+  await openTask(updated);
+}
+
+function openConfirmation(title, message, action) {
+  confirmation.value = { title, message, action, titleId: "confirm-dialog-title" };
+}
+
+function closeConfirmation() {
+  confirmation.value = null;
+}
+
+async function confirmAction() {
+  const action = confirmation.value?.action;
+  closeConfirmation();
+  if (action) await action();
+}
+
 async function changeNoteSize(size) {
   noteSize.value = size;
   localStorage.setItem("note-size", size);
@@ -611,6 +711,18 @@ async function changeAutoStart(enabled) {
   } catch (err) {
     autoStartEnabled.value = previous;
     window.alert(err || "设置开机自启动失败");
+  }
+}
+
+async function changeMinimalMode(enabled) {
+  const previous = minimalModeEnabled.value;
+  minimalModeEnabled.value = enabled;
+  try {
+    minimalModeEnabled.value = await invoke("set_minimal_mode", { enabled });
+    localStorage.setItem("minimal-mode", String(minimalModeEnabled.value));
+  } catch (err) {
+    minimalModeEnabled.value = previous;
+    window.alert(err || "设置极简模式失败");
   }
 }
 
@@ -657,9 +769,10 @@ function toLocalInputValue(value) {
 function eventText(event) {
   const labels = {
     created: "创建任务",
-    title_changed: `任务内容：${formatEventValue(event.before_value)} -> ${formatEventValue(event.after_value)}`,
-    deadline_changed: `截止时间：${formatEventValue(event.before_value)} -> ${formatEventValue(event.after_value)}`,
+    title_changed: `任务内容：${formatTextValue(event.before_value)} -> ${formatTextValue(event.after_value)}`,
+    deadline_changed: `截止时间：${formatDeadline(event.before_value)} -> ${formatDeadline(event.after_value)}`,
     urgent_changed: `紧急标记：${formatBool(event.before_value)} -> ${formatBool(event.after_value)}`,
+    progress_updated: `进度：${formatTextValue(event.after_value)}`,
     completed: "完成任务",
     archived: "归档任务",
     completion_undone: "撤销完成",
@@ -671,10 +784,9 @@ function formatBool(value) {
   return value === "true" || value === "1" ? "是" : "否";
 }
 
-function formatEventValue(value) {
+function formatTextValue(value) {
   if (!value) return "无";
-  if (value === "true" || value === "false") return formatBool(value);
-  return formatDeadline(value);
+  return value;
 }
 
 function loadUsers() {
