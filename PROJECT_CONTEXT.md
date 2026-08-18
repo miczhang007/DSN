@@ -2,8 +2,9 @@
 
 ## 项目位置
 
-- 当前项目目录：`D:\AI项目\桌面便签`
+- 当前项目目录：`D:\项目\sticky-note`
 - 原开发目录：`C:\Users\miczhang\Documents\Codex\2026-07-10\new-chat`
+- 迁移前位置（历史）：`D:\AI项目\桌面便签`
 - 迁移时间：2026-07-10
 
 ## 原始对话线程
@@ -69,7 +70,7 @@
 ## 产品说明口径
 
 - 产品名称：桌面便签-本地开源版
-- 版本：v1.0
+- 版本：v1.0.6
 - 当前形态：本地开源版
 - 开源方式：MIT License
 - 收费方式：本地版免费开源；未来云同步服务为独立可选订阅
@@ -79,11 +80,11 @@
 
 ## 已生成产物
 
-产物目录：`D:\AI项目\桌面便签\outputs`
+产物目录：`D:\项目\sticky-note\outputs`
 
-- `Desktop Sticky Note_1.0.0_x64-setup.exe`
-- `Desktop Sticky Note_1.0.0_x64_en-US.msi`
-- `desktop-sticky-note.exe`
+- `Desktop Sticky Note_1.0.6_x64-setup.exe`
+- `Desktop Sticky Note_1.0.6.0_x64.msix`
+- `stickynote.exe`
 
 ## 已完成验证
 
@@ -96,4 +97,4 @@
 - 安装包元数据使用英文 `Desktop Sticky Note`，用于绕开 WiX 对中文安装包元数据的 code page 限制。
 - 应用内部 UI 仍显示中文“桌面便签”。
 - 原目录移动时曾因进程占用导致删除旧目录失败，但文件已复制到 `D:\AI项目\桌面便签`。
-- Codex 线程 `cwd` 仍可能显示旧目录；后续开发应以 `D:\AI项目\桌面便签` 为准。
+- Codex 线程 `cwd` 仍可能显示旧目录；后续开发应以 `D:\项目\sticky-note` 为准。
