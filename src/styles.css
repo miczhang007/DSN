@@ -469,6 +469,167 @@ h1 {
   border-radius: 4px;
 }
 
+.next-milestone {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overdue-chip {
+  padding: 1px 6px 2px;
+  color: rgba(141, 30, 25, 0.92);
+  background: rgba(250, 210, 202, 0.85);
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.milestone-section h2 {
+  margin: 0 0 8px;
+  color: rgba(64, 51, 27, 0.62);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.milestone-list {
+  display: grid;
+  gap: 8px;
+}
+
+.milestone-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(107, 84, 34, 0.09);
+}
+
+.milestone-row.draft-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.milestone-row.editing {
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+}
+
+.milestone-row.editing .milestone-edit-fields {
+  grid-column: 2;
+}
+
+.milestone-row.editing .milestone-actions {
+  grid-column: 2;
+  justify-self: end;
+  margin-top: 2px;
+}
+
+.milestone-check {
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  border: 1.5px solid rgba(69, 54, 25, 0.52);
+  border-radius: 50%;
+  background: rgba(255, 249, 220, 0.2);
+  cursor: default;
+}
+
+.milestone-check:hover {
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.milestone-check.done {
+  border-color: rgba(83, 112, 55, 0.65);
+  background: rgba(83, 112, 55, 0.4);
+}
+
+.milestone-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.milestone-title {
+  overflow: hidden;
+  color: rgba(37, 31, 20, 0.9);
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.milestone-title.done {
+  color: rgba(64, 51, 27, 0.45);
+  text-decoration: line-through;
+}
+
+.milestone-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  color: rgba(64, 51, 27, 0.54);
+  font-size: 12px;
+}
+
+.milestone-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.milestone-edit-fields {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.milestone-edit-fields input {
+  width: 100%;
+  padding: 6px 8px;
+  color: rgba(37, 31, 20, 0.9);
+  background: var(--note-field-bg);
+  border: 1px solid rgba(107, 84, 34, 0.16);
+  border-radius: 6px;
+  outline: none;
+}
+
+.milestone-edit-fields input:focus {
+  border-color: rgba(107, 84, 34, 0.34);
+}
+
+.milestone-editor {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 14px;
+}
+
+.milestone-form {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.milestone-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  color: rgba(37, 31, 20, 0.9);
+  background: var(--note-field-bg);
+  border: 1px solid rgba(107, 84, 34, 0.16);
+  border-radius: 6px;
+  outline: none;
+}
+
+.milestone-form input:focus {
+  border-color: rgba(107, 84, 34, 0.34);
+}
+
+.milestone-form-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
 .empty-state {
   display: grid;
   height: 100%;

@@ -70,7 +70,7 @@
 ## 产品说明口径
 
 - 产品名称：桌面便签-本地开源版
-- 版本：v1.0.6
+- 版本：v1.1.0
 - 当前形态：本地开源版
 - 开源方式：MIT License
 - 收费方式：本地版免费开源；未来云同步服务为独立可选订阅
@@ -82,8 +82,8 @@
 
 产物目录：`D:\项目\sticky-note\outputs`
 
-- `Desktop Sticky Note_1.0.6_x64-setup.exe`
-- `Desktop Sticky Note_1.0.6.0_x64.msix`
+- `Desktop Sticky Note_1.1.0_x64-setup.exe`
+- `Desktop Sticky Note_1.1.0.0_x64.msix`
 - `stickynote.exe`
 
 ## 已完成验证

@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::process::Command;
@@ -25,6 +25,26 @@ struct Task {
     updated_at: String,
     completed_at: Option<String>,
     archived_at: Option<String>,
+    next_milestone_title: Option<String>,
+    next_milestone_planned_at: Option<String>,
+}
+
+#[derive(Serialize)]
+struct Milestone {
+    id: i64,
+    task_id: String,
+    title: String,
+    planned_at: Option<String>,
+    completed_at: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MilestoneInput {
+    title: String,
+    planned_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -66,6 +86,12 @@ pub fn run() {
             delete_task_progress,
             complete_task,
             undo_complete_task,
+            list_milestones,
+            add_milestone,
+            update_milestone,
+            complete_milestone,
+            undo_complete_milestone,
+            delete_milestone,
             rename_user_data,
             delete_user_data,
             set_note_size,
@@ -73,6 +99,7 @@ pub fn run() {
             set_minimal_mode,
             is_auto_start_enabled,
             set_auto_start_enabled,
+            open_external_link,
             exit_app
         ])
         .run(tauri::generate_context!());
@@ -159,6 +186,17 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             created_at TEXT NOT NULL,
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
+
+        CREATE TABLE IF NOT EXISTS task_milestones (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            planned_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(task_id) REFERENCES tasks(id)
+        );
         ",
     )?;
 
@@ -169,7 +207,37 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             } else {
                 Err(err)
             }
-        })
+        })?;
+
+    migrate_legacy_deadlines(conn)?;
+    Ok(())
+}
+
+/// 将历史任务上的截止时间字段迁移为首个节点，避免升级后旧计划信息丢失。
+fn migrate_legacy_deadlines(conn: &Connection) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare(
+        "
+        SELECT id, deadline_at
+        FROM tasks
+        WHERE deadline_at IS NOT NULL
+          AND id NOT IN (SELECT task_id FROM task_milestones)
+        ",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let legacy: Vec<(String, String)> = rows.collect::<rusqlite::Result<_>>()?;
+    for (task_id, planned_at) in legacy {
+        let now = now_string();
+        conn.execute(
+            "
+            INSERT INTO task_milestones (task_id, title, planned_at, completed_at, created_at, updated_at)
+            VALUES (?1, ?2, ?3, NULL, ?4, ?4)
+            ",
+            params![task_id, "截止时间", planned_at, now],
+        )?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -179,13 +247,27 @@ fn list_active_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>, 
     query_tasks(
         &conn,
         "
-        SELECT id, owner, title, deadline_at, is_urgent, created_at, updated_at, completed_at, archived_at
-        FROM tasks
-        WHERE owner = ?1 AND archived_at IS NULL
-        ORDER BY is_urgent DESC,
-          CASE WHEN deadline_at IS NULL THEN 1 ELSE 0 END ASC,
-          deadline_at ASC,
-          created_at ASC
+        SELECT t.id, t.owner, t.title, t.deadline_at, t.is_urgent, t.created_at, t.updated_at, t.completed_at, t.archived_at,
+          (SELECT m.title FROM task_milestones m
+            WHERE m.task_id = t.id AND m.completed_at IS NULL
+            ORDER BY CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
+            LIMIT 1),
+          (SELECT m.planned_at FROM task_milestones m
+            WHERE m.task_id = t.id AND m.completed_at IS NULL
+            ORDER BY CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
+            LIMIT 1)
+        FROM tasks t
+        WHERE t.owner = ?1 AND t.archived_at IS NULL
+        ORDER BY t.is_urgent DESC,
+          CASE WHEN COALESCE(
+            (SELECT MIN(m.planned_at) FROM task_milestones m
+              WHERE m.task_id = t.id AND m.completed_at IS NULL),
+            t.deadline_at) IS NULL THEN 1 ELSE 0 END ASC,
+          COALESCE(
+            (SELECT MIN(m.planned_at) FROM task_milestones m
+              WHERE m.task_id = t.id AND m.completed_at IS NULL),
+            t.deadline_at) ASC,
+          t.created_at ASC
         ",
         &owner,
     )
@@ -198,10 +280,12 @@ fn list_archived_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>
     query_tasks(
         &conn,
         "
-        SELECT id, owner, title, deadline_at, is_urgent, created_at, updated_at, completed_at, archived_at
-        FROM tasks
-        WHERE owner = ?1 AND archived_at IS NOT NULL
-        ORDER BY archived_at DESC
+        SELECT t.id, t.owner, t.title, t.deadline_at, t.is_urgent, t.created_at, t.updated_at, t.completed_at, t.archived_at,
+          NULL,
+          NULL
+        FROM tasks t
+        WHERE t.owner = ?1 AND t.archived_at IS NOT NULL
+        ORDER BY t.archived_at DESC
         ",
         &owner,
     )
@@ -211,7 +295,27 @@ fn list_archived_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>
 fn get_task(state: State<DbState>, owner: String, task_id: String) -> Result<Task, String> {
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
     let owner = normalize_owner(&owner)?;
-    query_task(&conn, &owner, &task_id)
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT t.id, t.owner, t.title, t.deadline_at, t.is_urgent, t.created_at, t.updated_at, t.completed_at, t.archived_at,
+              (SELECT m.title FROM task_milestones m
+                WHERE m.task_id = t.id AND m.completed_at IS NULL
+                ORDER BY CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
+                LIMIT 1),
+              (SELECT m.planned_at FROM task_milestones m
+                WHERE m.task_id = t.id AND m.completed_at IS NULL
+                ORDER BY CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
+                LIMIT 1)
+            FROM tasks t
+            WHERE t.id = ?1 AND t.owner = ?2
+            ",
+        )
+        .map_err(|err| err.to_string())?;
+    stmt.query_row(params![task_id, owner], map_task)
+        .optional()
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "任务不存在".to_string())
 }
 
 #[tauri::command]
@@ -250,6 +354,7 @@ fn create_task(
     title: String,
     deadline_at: Option<String>,
     is_urgent: bool,
+    milestones: Option<Vec<MilestoneInput>>,
 ) -> Result<Task, String> {
     let owner = normalize_owner(&owner)?;
     let trimmed_title = title.trim();
@@ -282,6 +387,28 @@ fn create_task(
     if is_urgent {
         insert_event(&conn, &id, "urgent_changed", Some("false"), Some("true"))?;
     }
+
+    if let Some(items) = milestones {
+        for item in items {
+            let milestone_title = item.title.trim();
+            if milestone_title.is_empty() {
+                return Err("节点名称不能为空".to_string());
+            }
+            if milestone_title.chars().count() > 40 {
+                return Err("节点名称不能超过 40 个字符".to_string());
+            }
+            let milestone_now = now_string();
+            conn.execute(
+                "
+                INSERT INTO task_milestones (task_id, title, planned_at, completed_at, created_at, updated_at)
+                VALUES (?1, ?2, ?3, NULL, ?4, ?4)
+                ",
+                params![id, milestone_title, item.planned_at, milestone_now],
+            )
+            .map_err(|err| err.to_string())?;
+        }
+    }
+
     query_task(&conn, &owner, &id)
 }
 
@@ -486,8 +613,245 @@ fn delete_user_data(state: State<DbState>, owner: String) -> Result<(), String> 
         params![owner],
     )
     .map_err(|err| err.to_string())?;
+    conn.execute(
+        "
+        DELETE FROM task_milestones
+        WHERE task_id IN (
+          SELECT id FROM tasks WHERE owner = ?1
+        )
+        ",
+        params![owner],
+    )
+    .map_err(|err| err.to_string())?;
     conn.execute("DELETE FROM tasks WHERE owner = ?1", params![owner])
         .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn list_milestones(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+) -> Result<Vec<Milestone>, String> {
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    let owner = normalize_owner(&owner)?;
+    query_task(&conn, &owner, &task_id)?;
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT id, task_id, title, planned_at, completed_at, created_at, updated_at
+            FROM task_milestones
+            WHERE task_id = ?1
+            ORDER BY CASE WHEN planned_at IS NULL THEN 1 ELSE 0 END, planned_at ASC, id ASC
+            ",
+        )
+        .map_err(|err| err.to_string())?;
+    let rows = stmt
+        .query_map(params![task_id], map_milestone)
+        .map_err(|err| err.to_string())?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn add_milestone(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+    title: String,
+    planned_at: Option<String>,
+) -> Result<Milestone, String> {
+    let owner = normalize_owner(&owner)?;
+    let trimmed_title = title.trim();
+    if trimmed_title.is_empty() {
+        return Err("节点名称不能为空".to_string());
+    }
+    if trimmed_title.chars().count() > 40 {
+        return Err("节点名称不能超过 40 个字符".to_string());
+    }
+
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    let task = query_task(&conn, &owner, &task_id)?;
+    if task.archived_at.is_some() {
+        return Err("已归档任务不能添加节点".to_string());
+    }
+
+    let now = now_string();
+    conn.execute(
+        "
+        INSERT INTO task_milestones (task_id, title, planned_at, completed_at, created_at, updated_at)
+        VALUES (?1, ?2, ?3, NULL, ?4, ?4)
+        ",
+        params![task_id, trimmed_title, planned_at, now],
+    )
+    .map_err(|err| err.to_string())?;
+    let milestone_id = conn.last_insert_rowid();
+    insert_event(&conn, &task_id, "milestone_created", None, Some(trimmed_title))?;
+    if let Some(planned) = planned_at.as_deref() {
+        insert_event(&conn, &task_id, "milestone_planned_changed", None, Some(planned))?;
+    }
+    query_milestone(&conn, &task_id, milestone_id)
+}
+
+#[tauri::command]
+fn update_milestone(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+    milestone_id: i64,
+    title: String,
+    planned_at: Option<String>,
+) -> Result<Milestone, String> {
+    let owner = normalize_owner(&owner)?;
+    let trimmed_title = title.trim();
+    if trimmed_title.is_empty() {
+        return Err("节点名称不能为空".to_string());
+    }
+    if trimmed_title.chars().count() > 40 {
+        return Err("节点名称不能超过 40 个字符".to_string());
+    }
+
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    let task = query_task(&conn, &owner, &task_id)?;
+    if task.archived_at.is_some() {
+        return Err("已归档任务不能修改节点".to_string());
+    }
+    let milestone = query_milestone(&conn, &task_id, milestone_id)?;
+    if milestone.completed_at.is_some() {
+        return Err("已完成的节点不能修改".to_string());
+    }
+
+    let now = now_string();
+    if milestone.title != trimmed_title {
+        insert_event(
+            &conn,
+            &task_id,
+            "milestone_renamed",
+            Some(&milestone.title),
+            Some(trimmed_title),
+        )?;
+    }
+    if milestone.planned_at != planned_at {
+        insert_event(
+            &conn,
+            &task_id,
+            "milestone_planned_changed",
+            milestone.planned_at.as_deref(),
+            planned_at.as_deref(),
+        )?;
+    }
+    conn.execute(
+        "
+        UPDATE task_milestones
+        SET title = ?1, planned_at = ?2, updated_at = ?3
+        WHERE id = ?4 AND task_id = ?5
+        ",
+        params![trimmed_title, planned_at, now, milestone_id, task_id],
+    )
+    .map_err(|err| err.to_string())?;
+    query_milestone(&conn, &task_id, milestone_id)
+}
+
+#[tauri::command]
+fn complete_milestone(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+    milestone_id: i64,
+) -> Result<(), String> {
+    let owner = normalize_owner(&owner)?;
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    query_task(&conn, &owner, &task_id)?;
+    let milestone = query_milestone(&conn, &task_id, milestone_id)?;
+    if milestone.completed_at.is_some() {
+        return Ok(());
+    }
+    let now = now_string();
+    conn.execute(
+        "
+        UPDATE task_milestones
+        SET completed_at = ?1, updated_at = ?1
+        WHERE id = ?2 AND task_id = ?3
+        ",
+        params![now, milestone_id, task_id],
+    )
+    .map_err(|err| err.to_string())?;
+    let progress_text = format!("完成节点：{}", milestone.title);
+    insert_event(
+        &conn,
+        &task_id,
+        "progress_updated",
+        None,
+        Some(&progress_text),
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+fn undo_complete_milestone(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+    milestone_id: i64,
+) -> Result<(), String> {
+    let owner = normalize_owner(&owner)?;
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    query_task(&conn, &owner, &task_id)?;
+    let milestone = query_milestone(&conn, &task_id, milestone_id)?;
+    if milestone.completed_at.is_none() {
+        return Ok(());
+    }
+    let now = now_string();
+    conn.execute(
+        "
+        UPDATE task_milestones
+        SET completed_at = NULL, updated_at = ?1
+        WHERE id = ?2 AND task_id = ?3
+        ",
+        params![now, milestone_id, task_id],
+    )
+    .map_err(|err| err.to_string())?;
+    let progress_text = format!("撤销完成节点：{}", milestone.title);
+    insert_event(
+        &conn,
+        &task_id,
+        "progress_updated",
+        None,
+        Some(&progress_text),
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_milestone(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+    milestone_id: i64,
+) -> Result<(), String> {
+    let owner = normalize_owner(&owner)?;
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    let task = query_task(&conn, &owner, &task_id)?;
+    if task.archived_at.is_some() {
+        return Err("已归档任务不能删除节点".to_string());
+    }
+    let milestone = query_milestone(&conn, &task_id, milestone_id)?;
+    conn.execute(
+        "
+        DELETE FROM task_milestones
+        WHERE id = ?1 AND task_id = ?2
+        ",
+        params![milestone_id, task_id],
+    )
+    .map_err(|err| err.to_string())?;
+    insert_event(
+        &conn,
+        &task_id,
+        "milestone_deleted",
+        Some(&milestone.title),
+        None,
+    )?;
     Ok(())
 }
 
@@ -588,6 +952,18 @@ fn exit_app(app: AppHandle) {
     app.exit(0);
 }
 
+#[tauri::command]
+fn open_external_link(url: String) -> Result<(), String> {
+    let status = Command::new("cmd")
+        .args(["/c", "start", "", &url])
+        .status()
+        .map_err(|err| format!("打开链接失败：{err}"))?;
+    if !status.success() {
+        return Err("打开链接失败".to_string());
+    }
+    Ok(())
+}
+
 fn query_tasks(conn: &Connection, sql: &str, owner: &str) -> Result<Vec<Task>, String> {
     let mut stmt = conn.prepare(sql).map_err(|err| err.to_string())?;
     let rows = stmt
@@ -600,7 +976,9 @@ fn query_tasks(conn: &Connection, sql: &str, owner: &str) -> Result<Vec<Task>, S
 fn query_task(conn: &Connection, owner: &str, task_id: &str) -> Result<Task, String> {
     conn.query_row(
         "
-        SELECT id, owner, title, deadline_at, is_urgent, created_at, updated_at, completed_at, archived_at
+        SELECT id, owner, title, deadline_at, is_urgent, created_at, updated_at, completed_at, archived_at,
+          NULL,
+          NULL
         FROM tasks
         WHERE id = ?1 AND owner = ?2
         ",
@@ -623,6 +1001,8 @@ fn map_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
         updated_at: row.get(6)?,
         completed_at: row.get(7)?,
         archived_at: row.get(8)?,
+        next_milestone_title: row.get(9)?,
+        next_milestone_planned_at: row.get(10)?,
     })
 }
 
@@ -634,6 +1014,37 @@ fn map_event(row: &rusqlite::Row) -> rusqlite::Result<TaskEvent> {
         before_value: row.get(3)?,
         after_value: row.get(4)?,
         created_at: row.get(5)?,
+    })
+}
+
+fn query_milestone(
+    conn: &Connection,
+    task_id: &str,
+    milestone_id: i64,
+) -> Result<Milestone, String> {
+    conn.query_row(
+        "
+        SELECT id, task_id, title, planned_at, completed_at, created_at, updated_at
+        FROM task_milestones
+        WHERE id = ?1 AND task_id = ?2
+        ",
+        params![milestone_id, task_id],
+        map_milestone,
+    )
+    .optional()
+    .map_err(|err| err.to_string())?
+    .ok_or_else(|| "节点不存在".to_string())
+}
+
+fn map_milestone(row: &rusqlite::Row) -> rusqlite::Result<Milestone> {
+    Ok(Milestone {
+        id: row.get(0)?,
+        task_id: row.get(1)?,
+        title: row.get(2)?,
+        planned_at: row.get(3)?,
+        completed_at: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
     })
 }
 

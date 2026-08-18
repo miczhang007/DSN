@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <main class="app-shell" :class="[`size-${noteSize}`, `theme-${noteTheme}`, { 'minimal-mode': minimalModeEnabled }]">
     <section class="note" :class="{ 'is-subview': view !== 'home' }" @click="closeMenu">
       <div class="pin-shadow"></div>
@@ -109,8 +109,11 @@
             ></button>
             <button class="task-main" type="button" @click.stop="openTask(task)">
               <span class="task-title">{{ task.title }}</span>
-              <span v-if="task.deadline_at || task.is_urgent" class="task-meta">
-                <span v-if="task.deadline_at">{{ formatDeadline(task.deadline_at) }}</span>
+              <span v-if="task.next_milestone_title || task.next_milestone_planned_at || task.is_urgent" class="task-meta">
+                <span v-if="task.next_milestone_title || task.next_milestone_planned_at" class="next-milestone">
+                  {{ nextMilestoneText(task) }}
+                </span>
+                <span v-if="isMilestoneOverdue(task.next_milestone_planned_at)" class="overdue-chip">已延迟</span>
                 <span v-if="task.is_urgent" class="urgent-chip">紧急</span>
               </span>
             </button>
@@ -195,14 +198,47 @@
           <span>任务</span>
           <input v-model.trim="draft.title" type="text" maxlength="80" autofocus />
         </label>
-        <label class="field">
-          <span>截止时间</span>
-          <input v-model="draft.deadline" type="datetime-local" />
-        </label>
         <label class="check-field">
           <input v-model="draft.isUrgent" type="checkbox" />
           <span>紧急</span>
         </label>
+
+        <div class="milestone-editor">
+          <div v-if="draft.milestones.length" class="milestone-list">
+            <div v-for="(ms, index) in draft.milestones" :key="index" class="milestone-row draft-row">
+              <div class="milestone-main">
+                <span class="milestone-title">{{ ms.title }}</span>
+                <span class="milestone-meta">
+                  <span v-if="ms.plannedAt">计划 {{ formatDeadline(ms.plannedAt) }}</span>
+                </span>
+              </div>
+              <div class="milestone-actions">
+                <button class="text-button" type="button" @click="removeDraftMilestone(index)">移除</button>
+              </div>
+            </div>
+          </div>
+          <button
+            v-if="!draft.milestoneFormOpen"
+            class="text-button"
+            type="button"
+            @click="draft.milestoneFormOpen = true"
+          >
+            添加节点
+          </button>
+          <form v-else class="milestone-form" @submit.prevent="addDraftMilestone">
+            <input v-model.trim="draft.milestoneDraftTitle" type="text" maxlength="40" placeholder="节点名称" />
+            <input
+              v-model="draft.milestoneDraftPlannedAt"
+              type="datetime-local"
+              @focus="fillDefaultPlannedTime(draft, 'milestoneDraftPlannedAt')"
+            />
+            <div class="milestone-form-actions">
+              <button class="text-button" type="submit" :disabled="!draft.milestoneDraftTitle">添加</button>
+              <button class="text-button" type="button" @click="draft.milestoneFormOpen = false">收起</button>
+            </div>
+          </form>
+        </div>
+
         <button class="primary-action" type="button" :disabled="!draft.title" @click="createTask">
           添加任务
         </button>
@@ -241,15 +277,87 @@
             <span>任务内容</span>
             <input v-model.trim="editDraft.title" type="text" maxlength="80" />
           </label>
-          <label class="field compact">
-            <span>截止时间</span>
-            <input v-model="editDraft.deadline" type="datetime-local" />
-          </label>
           <label class="check-field">
             <input v-model="editDraft.isUrgent" type="checkbox" />
             <span>紧急</span>
           </label>
           <button class="text-button" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">保存变更</button>
+
+          <div class="detail-section milestone-section">
+            <h2>节点</h2>
+            <div v-if="milestones.length" class="milestone-list">
+              <div
+                v-for="milestone in milestones"
+                :key="milestone.id"
+                class="milestone-row"
+                :class="{ editing: editingMilestoneId === milestone.id }"
+              >
+                <button
+                  class="milestone-check"
+                  type="button"
+                  :class="{ done: milestone.completed_at }"
+                  :aria-label="`完成节点 ${milestone.title}`"
+                  @click="completeMilestone(milestone)"
+                ></button>
+                <template v-if="editingMilestoneId === milestone.id">
+                  <div class="milestone-edit-fields">
+                    <input v-model.trim="milestoneEditDraft.title" type="text" maxlength="40" placeholder="节点名称" />
+                    <input v-model="milestoneEditDraft.plannedAt" type="datetime-local" />
+                  </div>
+                  <div class="milestone-actions">
+                    <button class="text-button" type="button" :disabled="!milestoneEditDraft.title" @click="saveMilestoneEdit(milestone)">
+                      保存
+                    </button>
+                    <button class="text-button" type="button" @click="cancelMilestoneEdit">
+                      取消
+                    </button>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="milestone-main">
+                    <span class="milestone-title" :class="{ done: milestone.completed_at }">{{ milestone.title }}</span>
+                    <span class="milestone-meta">
+                      <span v-if="milestone.planned_at">计划 {{ formatDeadline(milestone.planned_at) }}</span>
+                      <span v-if="milestone.completed_at">完成 {{ formatTime(milestone.completed_at) }}</span>
+                      <span v-else-if="isMilestoneOverdue(milestone.planned_at)" class="overdue-chip">已延迟</span>
+                    </span>
+                  </div>
+                  <div class="milestone-actions">
+                    <button v-if="milestone.completed_at" class="text-button" type="button" @click="undoCompleteMilestone(milestone)">
+                      撤销
+                    </button>
+                    <button v-else class="text-button" type="button" @click="startMilestoneEdit(milestone)">
+                      编辑
+                    </button>
+                    <button class="text-button danger" type="button" @click="deleteMilestone(milestone)">
+                      删除
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <button
+              v-if="!milestoneFormOpen"
+              class="text-button"
+              type="button"
+              @click="openMilestoneForm"
+            >
+              添加节点
+            </button>
+            <form v-else class="milestone-form" @submit.prevent="addMilestone">
+              <input v-model.trim="milestoneDraft.title" type="text" maxlength="40" placeholder="节点名称" />
+              <input
+                v-model="milestoneDraft.plannedAt"
+                type="datetime-local"
+                @focus="fillDefaultPlannedTime(milestoneDraft, 'plannedAt')"
+              />
+              <div class="milestone-form-actions">
+                <button class="text-button" type="submit" :disabled="!milestoneDraft.title">添加</button>
+                <button class="text-button" type="button" @click="closeMilestoneForm">收起</button>
+              </div>
+            </form>
+          </div>
+
           <div class="detail-section progress-section">
             <label class="field compact progress-field">
               <span>进度记录</span>
@@ -286,8 +394,8 @@
           <div><dt>当前版本</dt><dd>{{ versionLabel }}</dd></div>
           <div><dt>开发者</dt><dd>miczhang（个人开发者）</dd></div>
           <div><dt>数据说明</dt><dd>便签数据默认仅保存在本机，不上传至服务器</dd></div>
-          <div><dt>源码仓库</dt><dd><a :href="repositoryUrl" target="_blank" rel="noreferrer">GitHub 开源仓库</a></dd></div>
-          <div><dt>隐私政策</dt><dd><a :href="privacyPolicyUrl" target="_blank" rel="noreferrer">查看隐私政策</a></dd></div>
+          <div><dt>源码仓库</dt><dd><a href="#" rel="noreferrer" @click.prevent="openExternal(repositoryUrl)">GitHub 开源仓库</a></dd></div>
+          <div><dt>隐私政策</dt><dd><a href="#" rel="noreferrer" @click.prevent="openExternal(privacyPolicyUrl)">查看隐私政策</a></dd></div>
           <div><dt>联系方式</dt><dd>miczhang007@qq.com</dd></div>
         </dl>
       </section>
@@ -320,7 +428,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.0.6 - 2026-07-17 17:45";
+const versionLabel = "v1.1.0 - 2026-08-18 13:39";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -358,8 +466,20 @@ const activeTasks = ref([]);
 const archivedTasks = ref([]);
 const selectedTask = ref(null);
 const taskEvents = ref([]);
-const draft = reactive({ title: "", deadline: "", isUrgent: false });
-const editDraft = reactive({ title: "", deadline: "", isUrgent: false });
+const milestones = ref([]);
+const milestoneDraft = reactive({ title: "", plannedAt: "" });
+const editingMilestoneId = ref(null);
+const milestoneEditDraft = reactive({ title: "", plannedAt: "" });
+const draft = reactive({
+  title: "",
+  isUrgent: false,
+  milestones: [],
+  milestoneDraftTitle: "",
+  milestoneDraftPlannedAt: "",
+  milestoneFormOpen: false,
+});
+const editDraft = reactive({ title: "", isUrgent: false });
+const milestoneFormOpen = ref(false);
 const progressDraft = ref("");
 const confirmation = ref(null);
 
@@ -435,6 +555,7 @@ function goHome() {
   view.value = "home";
   selectedTask.value = null;
   taskEvents.value = [];
+  milestones.value = [];
   if (currentUser.value) {
     refreshActiveTasks();
   }
@@ -489,10 +610,13 @@ async function openTask(task) {
   menuOpen.value = false;
   selectedTask.value = task;
   editDraft.title = task.title;
-  editDraft.deadline = toLocalInputValue(task.deadline_at);
   editDraft.isUrgent = Boolean(task.is_urgent);
   progressDraft.value = "";
   taskEvents.value = await invoke("get_task_events", {
+    owner: currentUser.value,
+    taskId: task.id,
+  });
+  milestones.value = await invoke("list_milestones", {
     owner: currentUser.value,
     taskId: task.id,
   });
@@ -531,6 +655,7 @@ async function switchUser(user) {
   localStorage.setItem("current-user", user);
   selectedTask.value = null;
   taskEvents.value = [];
+  milestones.value = [];
   archivedTasks.value = [];
   editingUser.value = "";
   view.value = "home";
@@ -587,23 +712,52 @@ async function removeUser(user) {
   }
   selectedTask.value = null;
   taskEvents.value = [];
+  milestones.value = [];
   archivedTasks.value = [];
   await refreshActiveTasks();
 }
 
 async function createTask() {
   if (!draft.title) return;
+  const milestones = draft.milestones.map((ms) => ({
+    title: ms.title,
+    plannedAt: ms.plannedAt ? new Date(ms.plannedAt).toISOString() : null,
+  }));
   await invoke("create_task", {
     owner: currentUser.value,
     title: draft.title,
-    deadlineAt: draft.deadline ? new Date(draft.deadline).toISOString() : null,
+    deadlineAt: null,
     isUrgent: draft.isUrgent,
+    milestones: milestones.length ? milestones : null,
   });
   draft.title = "";
-  draft.deadline = "";
   draft.isUrgent = false;
+  draft.milestones = [];
+  draft.milestoneDraftTitle = "";
+  draft.milestoneDraftPlannedAt = "";
   view.value = "home";
   await refreshActiveTasks();
+}
+
+function addDraftMilestone() {
+  if (!draft.milestoneDraftTitle) return;
+  draft.milestones.push({
+    title: draft.milestoneDraftTitle,
+    plannedAt: draft.milestoneDraftPlannedAt,
+  });
+  draft.milestoneDraftTitle = "";
+  draft.milestoneDraftPlannedAt = "";
+}
+
+function removeDraftMilestone(index) {
+  draft.milestones.splice(index, 1);
+}
+
+function fillDefaultPlannedTime(target, key) {
+  if (target[key]) return;
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  target[key] = toLocalInputValue(now.toISOString());
 }
 
 async function completeTask(taskId) {
@@ -620,12 +774,11 @@ async function undoCompleteTask(taskId) {
 async function saveTaskChanges() {
   if (!selectedTask.value) return;
   if (!editDraft.title) return;
-  const deadlineAt = editDraft.deadline ? new Date(editDraft.deadline).toISOString() : null;
   await invoke("update_task", {
     owner: currentUser.value,
     taskId: selectedTask.value.id,
     title: editDraft.title,
-    deadlineAt,
+    deadlineAt: null,
     isUrgent: editDraft.isUrgent,
   });
   const updated = await invoke("get_task", {
@@ -633,6 +786,117 @@ async function saveTaskChanges() {
     taskId: selectedTask.value.id,
   });
   await openTask(updated);
+}
+
+async function reloadTaskDetail() {
+  if (!selectedTask.value) return;
+  const updated = await invoke("get_task", {
+    owner: currentUser.value,
+    taskId: selectedTask.value.id,
+  });
+  await openTask(updated);
+}
+
+function openMilestoneForm() {
+  milestoneFormOpen.value = true;
+}
+
+function closeMilestoneForm() {
+  milestoneDraft.title = "";
+  milestoneDraft.plannedAt = "";
+  milestoneFormOpen.value = false;
+}
+
+async function addMilestone() {
+  if (!selectedTask.value || !milestoneDraft.title) return;
+  await invoke("add_milestone", {
+    owner: currentUser.value,
+    taskId: selectedTask.value.id,
+    title: milestoneDraft.title,
+    plannedAt: milestoneDraft.plannedAt
+      ? new Date(milestoneDraft.plannedAt).toISOString()
+      : null,
+  });
+  milestoneDraft.title = "";
+  milestoneDraft.plannedAt = "";
+  milestoneFormOpen.value = false;
+  await reloadTaskDetail();
+}
+
+function startMilestoneEdit(milestone) {
+  editingMilestoneId.value = milestone.id;
+  milestoneEditDraft.title = milestone.title;
+  milestoneEditDraft.plannedAt = toLocalInputValue(milestone.planned_at);
+}
+
+function cancelMilestoneEdit() {
+  editingMilestoneId.value = null;
+}
+
+async function saveMilestoneEdit(milestone) {
+  if (!selectedTask.value || !milestoneEditDraft.title) return;
+  await invoke("update_milestone", {
+    owner: currentUser.value,
+    taskId: selectedTask.value.id,
+    milestoneId: milestone.id,
+    title: milestoneEditDraft.title,
+    plannedAt: milestoneEditDraft.plannedAt
+      ? new Date(milestoneEditDraft.plannedAt).toISOString()
+      : null,
+  });
+  editingMilestoneId.value = null;
+  await reloadTaskDetail();
+}
+
+async function completeMilestone(milestone) {
+  if (!selectedTask.value || milestone.completed_at) return;
+  await invoke("complete_milestone", {
+    owner: currentUser.value,
+    taskId: selectedTask.value.id,
+    milestoneId: milestone.id,
+  });
+  await reloadTaskDetail();
+}
+
+async function undoCompleteMilestone(milestone) {
+  if (!selectedTask.value) return;
+  await invoke("undo_complete_milestone", {
+    owner: currentUser.value,
+    taskId: selectedTask.value.id,
+    milestoneId: milestone.id,
+  });
+  await reloadTaskDetail();
+}
+
+function deleteMilestone(milestone) {
+  openConfirmation(
+    "删除节点",
+    `确定删除节点“${milestone.title}”吗？此操作不能恢复。`,
+    () => removeMilestone(milestone),
+  );
+}
+
+async function removeMilestone(milestone) {
+  if (!selectedTask.value) return;
+  await invoke("delete_milestone", {
+    owner: currentUser.value,
+    taskId: selectedTask.value.id,
+    milestoneId: milestone.id,
+  });
+  await reloadTaskDetail();
+}
+
+function isMilestoneOverdue(plannedAt) {
+  if (!plannedAt) return false;
+  return new Date(plannedAt).getTime() < Date.now();
+}
+
+function nextMilestoneText(task) {
+  const title = task.next_milestone_title || "未命名";
+  const planned = task.next_milestone_planned_at
+    ? ` · ${formatDeadline(task.next_milestone_planned_at)}`
+    : "";
+  return `下一节点：${title}${planned}`;
 }
 
 async function saveTaskProgress() {
@@ -738,6 +1002,14 @@ async function exitApp() {
   await invoke("exit_app");
 }
 
+async function openExternal(url) {
+  try {
+    await invoke("open_external_link", { url });
+  } catch (err) {
+    window.alert(err || "打开链接失败");
+  }
+}
+
 function formatDeadline(value) {
   if (!value) return "无截止时间";
   const date = new Date(value);
@@ -772,7 +1044,11 @@ function eventText(event) {
     title_changed: `任务内容：${formatTextValue(event.before_value)} -> ${formatTextValue(event.after_value)}`,
     deadline_changed: `截止时间：${formatDeadline(event.before_value)} -> ${formatDeadline(event.after_value)}`,
     urgent_changed: `紧急标记：${formatBool(event.before_value)} -> ${formatBool(event.after_value)}`,
-    progress_updated: `进度：${formatTextValue(event.after_value)}`,
+    progress_updated: formatTextValue(event.after_value),
+    milestone_created: `新增节点：${formatTextValue(event.after_value)}`,
+    milestone_renamed: `节点改名：${formatTextValue(event.before_value)} -> ${formatTextValue(event.after_value)}`,
+    milestone_planned_changed: `节点计划时间：${formatDeadline(event.before_value)} -> ${formatDeadline(event.after_value)}`,
+    milestone_deleted: `删除节点：${formatTextValue(event.before_value)}`,
     completed: "完成任务",
     archived: "归档任务",
     completion_undone: "撤销完成",

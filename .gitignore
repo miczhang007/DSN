@@ -3,6 +3,7 @@ dist/
 outputs/
 work/
 src-tauri/target/
+.dsh-vision-toolkit/
 
 .env
 .env.*
