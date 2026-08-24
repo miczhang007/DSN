@@ -14,7 +14,7 @@
         </button>
         <h1
           v-if="viewTitle"
-          :class="{ 'quiet-view-title': view === 'home' || view === 'history' }"
+          :class="{ 'quiet-view-title': ['home', 'history', 'recurring-settings', 'recurring-setting-detail'].includes(view) }"
         >
           {{ viewTitle }}
         </h1>
@@ -35,6 +35,7 @@
       <Transition name="fade">
         <nav v-if="menuOpen" class="note-menu" aria-label="菜单" @click.stop>
           <button type="button" @click="openHistory">历史任务</button>
+          <button type="button" @click="openRecurringSettings">周期任务规则</button>
           <button type="button" @click="openUserManager">用户管理</button>
           <div class="menu-section">
             <label>
@@ -106,7 +107,7 @@
               class="complete-button"
               type="button"
               :aria-label="`完成 ${task.title}`"
-              @click.stop="completeTask(task.id)"
+              @click.stop="confirmArchiveTask(task.id)"
             ></button>
             <button
               class="task-main"
@@ -204,12 +205,28 @@
           <span>任务</span>
           <input v-model.trim="draft.title" type="text" maxlength="80" autofocus />
         </label>
-        <label class="check-field">
-          <input v-model="draft.isUrgent" type="checkbox" />
-          <span>紧急</span>
-        </label>
+        <div class="task-type-toggles">
+          <label class="check-field recurring-toggle">
+            <input v-model="draft.isRecurring" type="checkbox" />
+            <span>周期任务</span>
+          </label>
+          <label v-if="!draft.isRecurring" class="check-field">
+            <input v-model="draft.isUrgent" type="checkbox" />
+            <span>紧急</span>
+          </label>
+        </div>
+        <template v-if="draft.isRecurring">
+          <label class="field compact"><span>时间范围</span><select v-model="draft.dateRangeType"><option value="long">长期</option><option value="range">指定日期</option></select></label>
+          <label class="field compact"><span>开始日期</span><input v-model="draft.startDate" type="date" /></label>
+          <label v-if="draft.dateRangeType === 'range'" class="field compact"><span>结束日期</span><input v-model="draft.endDate" type="date" /></label>
+          <label class="field compact"><span>重复频率</span><select v-model="draft.frequencyType"><option value="daily">按日</option><option value="weekly">按周</option><option value="monthly">按月</option></select></label>
+          <div v-if="draft.frequencyType === 'daily'" class="weekday-picker"><label v-for="day in weekdayOptions" :key="day.value"><input v-model="draft.weekdays" type="checkbox" :value="day.value" />{{ day.label }}</label></div>
+          <label v-if="draft.frequencyType !== 'daily'" class="field compact"><span>重复次数</span><input v-model.number="draft.repeatCount" type="number" min="1" max="31" /></label>
+          <label class="field compact"><span>任务生成时间</span><input v-model="draft.generateTime" type="time" /></label>
+          <p class="form-hint">周期任务会在符合规则的当天自动生成，任务名称将附带日期。</p>
+        </template>
 
-        <div class="milestone-editor">
+        <div v-if="!draft.isRecurring" class="milestone-editor">
           <div v-if="draft.milestones.length" class="milestone-list">
             <div v-for="(ms, index) in draft.milestones" :key="index" class="milestone-row draft-row">
               <div class="milestone-main">
@@ -256,19 +273,60 @@
             v-for="task in archivedTasks"
             :key="task.id"
             class="history-item"
+            @click.self="expandedHistoryTaskId = ''"
           >
             <button class="history-main" type="button" @click="openTask(task)">
               <span>{{ task.title }}</span>
-              <small>完成 {{ formatTime(task.completed_at) }}</small>
+              <small>{{ task.is_recurring ? `${task.completed_at ? '已完成' : '未完成'} · ` : '完成 ' }}{{ formatTime(task.archived_at) }}</small>
             </button>
-            <button class="text-button" type="button" @click="undoCompleteTask(task.id)">
-              撤销完成
+            <button class="icon-button history-action-toggle" type="button" aria-label="更多操作" @click="toggleHistoryActions(task.id)">
+              <span class="vertical-dots" aria-hidden="true"><span></span><span></span><span></span></span>
             </button>
+            <div v-if="expandedHistoryTaskId === task.id" class="history-actions" @click.stop>
+              <button v-if="task.completed_at" class="text-button" type="button" @click="historyAction(task, 'undo_completion')">撤销完成</button>
+              <button v-else class="text-button" type="button" @click="historyAction(task, 'mark_completed')">已完成</button>
+              <button v-if="!task.completed_at && canUndoTask(task)" class="text-button" type="button" @click="historyAction(task, 'undo_archive')">撤销归档</button>
+              <button class="text-button danger" type="button" @click="deleteArchivedTask(task)">删除</button>
+            </div>
           </article>
         </div>
         <div v-else class="empty-state">
           <p>还没有历史任务</p>
         </div>
+      </section>
+
+      <section v-else-if="view === 'recurring-settings'" class="content recurring-settings-view" @click.stop>
+        <div v-if="recurringSettings.length" class="history-list">
+          <article v-for="setting in recurringSettings" :key="setting.id" class="history-item">
+            <button class="history-main" type="button" @click="openRecurringSettingDetail(setting)"><span>{{ setting.title }}</span><small>{{ recurringSummary(setting) }} · {{ setting.status }}</small></button>
+            <button class="icon-button history-action-toggle" type="button" aria-label="更多操作" @click="toggleHistoryActions(`setting:${setting.id}`)"><span class="vertical-dots" aria-hidden="true"><span></span><span></span><span></span></span></button>
+            <div v-if="expandedHistoryTaskId === `setting:${setting.id}`" class="history-actions" @click.stop>
+              <button v-if="setting.status !== '已作废'" class="text-button" type="button" @click="openRecurringSetting(setting)">编辑规则</button>
+              <button v-if="setting.status === '生效中'" class="text-button danger" type="button" @click="voidRecurringSetting(setting)">作废</button>
+              <button v-if="setting.status === '已作废'" class="text-button danger" type="button" @click="deleteRecurringSetting(setting)">删除</button>
+            </div>
+          </article>
+        </div>
+        <div v-else class="empty-state"><p>还没有周期任务设置</p></div>
+      </section>
+
+      <section v-else-if="view === 'recurring-setting'" class="content form-view" @click.stop>
+        <label class="field"><span>任务</span><input v-model.trim="recurringDraft.title" type="text" maxlength="80" /></label>
+        <label class="field compact"><span>时间范围</span><select v-model="recurringDraft.dateRangeType"><option value="long">长期</option><option value="range">指定日期</option></select></label>
+        <label class="field compact"><span>开始日期</span><input v-model="recurringDraft.startDate" type="date" /></label>
+        <label v-if="recurringDraft.dateRangeType === 'range'" class="field compact"><span>结束日期</span><input v-model="recurringDraft.endDate" type="date" /></label>
+        <label class="field compact"><span>重复频率</span><select v-model="recurringDraft.frequencyType"><option value="daily">按日</option><option value="weekly">按周</option><option value="monthly">按月</option></select></label>
+        <div v-if="recurringDraft.frequencyType === 'daily'" class="weekday-picker"><label v-for="day in weekdayOptions" :key="day.value"><input v-model="recurringDraft.weekdays" type="checkbox" :value="day.value" />{{ day.label }}</label></div>
+        <label v-if="recurringDraft.frequencyType !== 'daily'" class="field compact"><span>重复次数</span><input v-model.number="recurringDraft.repeatCount" type="number" min="1" max="31" /></label>
+        <label class="field compact"><span>任务生成时间</span><input v-model="recurringDraft.generateTime" type="time" /></label>
+        <button class="primary-action" type="button" :disabled="!recurringDraft.title" @click="saveRecurringSetting">保存设置</button>
+      </section>
+
+      <section v-else-if="view === 'recurring-setting-detail'" class="content detail-view" @click.stop>
+        <div class="detail-summary compact recurring-detail-summary"><span class="recurring-detail-title">{{ recurringDetail?.title }}</span><span>{{ recurringDetail?.status }}</span></div>
+        <div class="detail-section recurring-detail-section"><h2>设置信息</h2><div class="recurring-info-list"><p><span>时间范围</span><strong>{{ recurringDetail?.date_range_type === 'range' ? `${recurringDetail?.start_date} 至 ${recurringDetail?.end_date}` : '长期' }}</strong></p><p><span>重复频率</span><strong>{{ recurringFrequencyText(recurringDetail) }}</strong></p><p><span>生成时间</span><strong>{{ recurringDetail?.generate_time }}</strong></p></div></div>
+        <div class="detail-section recurring-detail-section"><h2>操作日志</h2><div v-if="recurringSettingEvents.length" class="event-list"><div v-for="event in recurringSettingEvents" :key="event.id" class="event-row"><time>{{ formatTime(event.created_at) }}</time><span>{{ recurringEventText(event.event_type) }}</span></div></div><p v-else class="section-empty">暂无操作日志</p></div>
+        <div class="detail-section recurring-detail-section"><h2>相关任务 <small class="recurring-completed-count">已完成 {{ recurringCompletedCount }} 次</small></h2><div v-if="recurringSettingTasks.length" class="history-list recurring-task-list"><button v-for="task in recurringSettingTasks" :key="task.id" class="history-main" type="button" @click="openTask(task)"><span>{{ task.title }}</span><small :class="recurringTaskStatusClass(task)">{{ recurringTaskStatusText(task) }}</small></button></div><p v-else class="section-empty">暂无相关任务</p></div>
       </section>
 
       <section v-else-if="view === 'detail' && selectedTask" class="content detail-view" @click.stop>
@@ -277,8 +335,26 @@
           <span>已归档</span>
           <span v-if="selectedTask.deadline_at">截止：{{ formatDeadline(selectedTask.deadline_at) }}</span>
           <span v-if="selectedTask.is_urgent">紧急</span>
+          <button v-if="selectedTask.is_recurring" class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期任务</button>
         </div>
-        <div v-if="!selectedTask.archived_at" class="detail-actions">
+        <div v-if="selectedTask.is_recurring && !selectedTask.archived_at" class="detail-actions">
+          <label class="field compact">
+            <span>任务内容</span>
+            <input v-model.trim="editDraft.title" type="text" maxlength="80" />
+          </label>
+          <div class="detail-action-row">
+            <button class="text-button" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">保存变更</button>
+            <button class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期任务</button>
+          </div>
+          <div class="detail-section progress-section">
+            <label class="field compact progress-field">
+              <span>进度记录</span>
+              <textarea v-model.trim="progressDraft" rows="2" maxlength="240" placeholder="记录当前进展、阻碍或下一步安排"></textarea>
+            </label>
+            <button class="text-button progress-submit" type="button" :disabled="!progressDraft" @click="saveTaskProgress">添加进度</button>
+          </div>
+        </div>
+        <div v-else-if="!selectedTask.archived_at" class="detail-actions">
           <label class="field compact">
             <span>任务内容</span>
             <input v-model.trim="editDraft.title" type="text" maxlength="80" />
@@ -415,11 +491,15 @@
   <Teleport to="body">
     <div v-if="confirmation" class="confirm-backdrop" @click.self="closeConfirmation">
       <section class="confirm-dialog" role="alertdialog" aria-modal="true" :aria-labelledby="confirmation.titleId">
-        <h2 :id="confirmation.titleId">{{ confirmation.title }}</h2>
-        <p>{{ confirmation.message }}</p>
+        <h2 v-if="confirmation.kind !== 'archive'" :id="confirmation.titleId">{{ confirmation.title }}</h2>
+        <p v-if="confirmation.kind !== 'archive'">{{ confirmation.message }}</p>
+        <label v-if="confirmation.kind === 'archive'" class="check-field confirm-check">
+          <input v-model="confirmation.isCompleted" type="checkbox" />
+          <span>任务已完成</span>
+        </label>
         <div class="confirm-actions">
           <button class="text-button" type="button" @click="closeConfirmation">取消</button>
-          <button class="text-button danger confirm-button" type="button" @click="confirmAction">确认删除</button>
+          <button class="text-button danger confirm-button" type="button" @click="confirmAction">{{ confirmation.kind === 'archive' ? '提交' : '确认删除' }}</button>
         </div>
       </section>
     </div>
@@ -434,7 +514,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.2.0 - 2026-08-24 10:39";
+const versionLabel = "v1.3.0 - 2026-08-24 23:25";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -479,15 +559,38 @@ const milestoneEditDraft = reactive({ title: "", plannedAt: "" });
 const draft = reactive({
   title: "",
   isUrgent: false,
+  isRecurring: false,
+  dateRangeType: "long",
+  startDate: localDateInputValue(),
+  endDate: "",
+  frequencyType: "daily",
+  weekdays: [],
+  repeatCount: 1,
+  generateTime: "06:00",
   milestones: [],
   milestoneDraftTitle: "",
   milestoneDraftPlannedAt: "",
   milestoneFormOpen: false,
 });
+const weekdayOptions = [
+  { label: "一", value: 0 }, { label: "二", value: 1 }, { label: "三", value: 2 },
+  { label: "四", value: 3 }, { label: "五", value: 4 }, { label: "六", value: 5 }, { label: "日", value: 6 },
+];
+const recurringSettings = ref([]);
+const recurringSettingTasks = ref([]);
+const recurringSettingEvents = ref([]);
+const recurringDetail = ref(null);
+const recurringCompletedCount = computed(() => recurringSettingTasks.value.filter((task) => Boolean(task.completed_at)).length);
+const selectedRecurringSettingId = ref("");
+const recurringReturnView = ref("home");
+const recurringDraft = reactive({ title: "", isUrgent: false, dateRangeType: "long", startDate: localDateInputValue(), endDate: "", frequencyType: "daily", weekdays: [], repeatCount: 1, generateTime: "06:00" });
 const editDraft = reactive({ title: "", isUrgent: false });
 const milestoneFormOpen = ref(false);
 const progressDraft = ref("");
 const confirmation = ref(null);
+const expandedHistoryTaskId = ref("");
+const detailReturnView = ref("home");
+let recurringRefreshTimer = null;
 
 const viewTitle = computed(() => {
   const titles = {
@@ -495,6 +598,9 @@ const viewTitle = computed(() => {
     users: "",
     add: "New",
     history: "History",
+    "recurring-settings": "周期任务",
+    "recurring-setting": "周期设置",
+    "recurring-setting-detail": "规则详情",
     detail: "Detail",
     about: "",
   };
@@ -525,6 +631,11 @@ onMounted(async () => {
   if (currentUser.value) {
     await refreshActiveTasks();
   }
+  recurringRefreshTimer = window.setInterval(() => {
+    if (currentUser.value) {
+      refreshActiveTasks().catch(() => {});
+    }
+  }, 60_000);
 
   requestAnimationFrame(() => {
     const layoutUpdates = [
@@ -543,6 +654,7 @@ onUnmounted(() => {
   window.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("mousemove", onRowDragMove);
   window.removeEventListener("mouseup", endRowDrag);
+  if (recurringRefreshTimer) window.clearInterval(recurringRefreshTimer);
 });
 
 function toggleMenu() {
@@ -560,6 +672,7 @@ function handleKeydown(event) {
 }
 
 function goHome() {
+  expandedHistoryTaskId.value = "";
   view.value = "home";
   selectedTask.value = null;
   taskEvents.value = [];
@@ -570,8 +683,30 @@ function goHome() {
 }
 
 async function handleBack() {
+  expandedHistoryTaskId.value = "";
   if (shouldExitFromUserManager.value) {
     await exitApp();
+    return;
+  }
+  if (view.value === "recurring-setting") {
+    view.value = recurringReturnView.value || "home";
+    if (view.value === "home") await refreshActiveTasks();
+    return;
+  }
+  if (view.value === "recurring-setting-detail") {
+    view.value = "recurring-settings";
+    return;
+  }
+  if (view.value === "detail") {
+    if (detailReturnView.value === "history") {
+      view.value = "history";
+      archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
+    } else if (detailReturnView.value === "recurring-setting") {
+      view.value = "recurring-setting";
+    } else {
+      await goHome();
+    }
+    selectedTask.value = null;
     return;
   }
   goHome();
@@ -583,6 +718,7 @@ function openAdd() {
     return;
   }
   menuOpen.value = false;
+  expandedHistoryTaskId.value = "";
   view.value = "add";
 }
 
@@ -592,12 +728,105 @@ async function openHistory() {
     return;
   }
   menuOpen.value = false;
+  expandedHistoryTaskId.value = "";
   view.value = "history";
   archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
 }
 
+async function openRecurringSettings() {
+  if (!currentUser.value) return openUserManager();
+  menuOpen.value = false;
+  expandedHistoryTaskId.value = "";
+  recurringSettings.value = await invoke("list_recurring_task_settings", { owner: currentUser.value });
+  view.value = "recurring-settings";
+}
+
+function voidRecurringSetting(setting) {
+  openConfirmation("作废周期任务设置", "作废后不可恢复，且不会再生成新的任务。确定继续吗？", async () => {
+    await invoke("void_recurring_task_setting", { owner: currentUser.value, settingId: setting.id });
+    expandedHistoryTaskId.value = "";
+    recurringSettings.value = await invoke("list_recurring_task_settings", { owner: currentUser.value });
+  });
+}
+
+function deleteRecurringSetting(setting) {
+  openConfirmation("删除周期任务规则", `确定删除“${setting.title}”吗？删除后不可恢复。`, async () => {
+    try {
+      await invoke("delete_recurring_task_setting", { owner: currentUser.value, settingId: setting.id });
+      expandedHistoryTaskId.value = "";
+      recurringSettings.value = await invoke("list_recurring_task_settings", { owner: currentUser.value });
+    } catch (err) {
+      window.alert(err || "删除周期任务规则失败");
+    }
+  });
+}
+
+async function openRecurringSetting(setting = null) {
+  expandedHistoryTaskId.value = "";
+  const source = setting || { id: "", title: draft.title, is_urgent: draft.isUrgent, date_range_type: draft.dateRangeType, start_date: draft.startDate, end_date: draft.endDate, frequency_type: draft.frequencyType, weekdays: draft.weekdays.join(","), repeat_count: draft.repeatCount, generate_time: draft.generateTime };
+  selectedRecurringSettingId.value = source.id;
+  recurringReturnView.value = view.value;
+  recurringDraft.title = source.title;
+  recurringDraft.isUrgent = false;
+  recurringDraft.dateRangeType = source.date_range_type;
+  recurringDraft.startDate = source.start_date;
+  recurringDraft.endDate = source.end_date || "";
+  recurringDraft.frequencyType = source.frequency_type;
+  recurringDraft.weekdays = String(source.weekdays || "").split(",").filter(Boolean).map(Number);
+  recurringDraft.repeatCount = source.repeat_count || 1;
+  recurringDraft.generateTime = source.generate_time || "06:00";
+  recurringSettingTasks.value = source.id ? await invoke("list_recurring_setting_tasks", { owner: currentUser.value, settingId: source.id }) : [];
+  view.value = "recurring-setting";
+}
+
+async function openRecurringSettingDetail(setting) {
+  expandedHistoryTaskId.value = "";
+  recurringDetail.value = setting;
+  recurringSettingTasks.value = await invoke("list_recurring_setting_tasks", { owner: currentUser.value, settingId: setting.id });
+  recurringSettingEvents.value = await invoke("list_recurring_setting_events", { owner: currentUser.value, settingId: setting.id });
+  view.value = "recurring-setting-detail";
+}
+
+async function openRecurringSettingById(id) {
+  const setting = recurringSettings.value.find((item) => item.id === id) || (await invoke("list_recurring_task_settings", { owner: currentUser.value })).find((item) => item.id === id);
+  if (setting) await openRecurringSetting(setting);
+}
+
+function recurringEventText(type) {
+  return { created: "创建规则", updated: "编辑规则", voided: "作废规则" }[type] || type;
+}
+
+function recurringFrequencyText(setting) {
+  if (!setting) return "";
+  const label = { daily: "按日", weekly: "按周", monthly: "按月" }[setting.frequency_type] || "";
+  return `${label}${setting.repeat_count > 1 ? `（${setting.repeat_count} 次）` : ""}`;
+}
+
+function recurringTaskStatusText(task) {
+  if (task.archived_at) return task.completed_at ? "已完成" : "未完成";
+  return "待完成";
+}
+
+function recurringTaskStatusClass(task) {
+  if (task.archived_at) return task.completed_at ? "status-completed" : "status-uncompleted";
+  return "status-pending";
+}
+
+async function saveRecurringSetting() {
+  const payload = { owner: currentUser.value, title: recurringDraft.title, isUrgent: false, dateRangeType: recurringDraft.dateRangeType, startDate: recurringDraft.startDate, endDate: recurringDraft.dateRangeType === "range" ? recurringDraft.endDate || null : null, frequencyType: recurringDraft.frequencyType, weekdays: recurringDraft.weekdays, repeatCount: recurringDraft.repeatCount, generateTime: recurringDraft.generateTime };
+  if (selectedRecurringSettingId.value) {
+    if (recurringDraft.status === "已作废") return;
+    await invoke("update_recurring_task_setting", { ...payload, settingId: selectedRecurringSettingId.value });
+  } else {
+    await invoke("create_recurring_task_setting", payload);
+  }
+  if (recurringReturnView.value === "recurring-settings") await openRecurringSettings();
+  else { view.value = recurringReturnView.value || "home"; await refreshActiveTasks(); }
+}
+
 function openUserManager() {
   menuOpen.value = false;
+  expandedHistoryTaskId.value = "";
   userDraft.value = "";
   userFormOpen.value = !users.value.length;
   editingUser.value = "";
@@ -607,6 +836,7 @@ function openUserManager() {
 
 function openAbout() {
   menuOpen.value = false;
+  expandedHistoryTaskId.value = "";
   view.value = "about";
 }
 
@@ -616,6 +846,8 @@ async function openTask(task) {
     return;
   }
   menuOpen.value = false;
+  expandedHistoryTaskId.value = "";
+  detailReturnView.value = view.value === "history" ? "history" : view.value === "recurring-setting" ? "recurring-setting" : "home";
   selectedTask.value = task;
   editDraft.title = task.title;
   editDraft.isUrgent = Boolean(task.is_urgent);
@@ -624,10 +856,12 @@ async function openTask(task) {
     owner: currentUser.value,
     taskId: task.id,
   });
-  milestones.value = await invoke("list_milestones", {
-    owner: currentUser.value,
-    taskId: task.id,
-  });
+  milestones.value = task.is_recurring
+    ? []
+    : await invoke("list_milestones", {
+        owner: currentUser.value,
+        taskId: task.id,
+      });
   view.value = "detail";
 }
 
@@ -802,6 +1036,32 @@ async function removeUser(user) {
 
 async function createTask() {
   if (!draft.title) return;
+  if (draft.isRecurring) {
+    await invoke("create_recurring_task_setting", {
+      owner: currentUser.value,
+      title: draft.title,
+      isUrgent: false,
+      dateRangeType: draft.dateRangeType,
+      startDate: draft.startDate,
+      endDate: draft.dateRangeType === "range" ? draft.endDate || null : null,
+      frequencyType: draft.frequencyType,
+      weekdays: draft.weekdays,
+      repeatCount: draft.repeatCount,
+      generateTime: draft.generateTime,
+    });
+    draft.title = "";
+    draft.isUrgent = false;
+    draft.isRecurring = false;
+    draft.dateRangeType = "long";
+    draft.startDate = localDateInputValue();
+    draft.endDate = "";
+    draft.frequencyType = "daily";
+    draft.weekdays = [];
+    draft.generateTime = "06:00";
+    view.value = "home";
+    await refreshActiveTasks();
+    return;
+  }
   const milestones = draft.milestones.map((ms) => ({
     title: ms.title,
     plannedAt: ms.plannedAt ? new Date(ms.plannedAt).toISOString() : null,
@@ -815,6 +1075,7 @@ async function createTask() {
   });
   draft.title = "";
   draft.isUrgent = false;
+  draft.isRecurring = false;
   draft.milestones = [];
   draft.milestoneDraftTitle = "";
   draft.milestoneDraftPlannedAt = "";
@@ -852,6 +1113,39 @@ async function undoCompleteTask(taskId) {
   await invoke("undo_complete_task", { owner: currentUser.value, taskId });
   archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
   await refreshActiveTasks();
+}
+
+async function toggleArchivedTaskCompletion(task) {
+  if (task.completed_at) {
+    await undoCompleteTask(task.id);
+  } else {
+    await invoke("complete_task", { owner: currentUser.value, taskId: task.id });
+    archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
+  }
+}
+
+function toggleHistoryActions(taskId) {
+  expandedHistoryTaskId.value = expandedHistoryTaskId.value === taskId ? "" : taskId;
+}
+
+async function historyAction(task, action) {
+  try {
+    await invoke("restore_archived_task", { owner: currentUser.value, taskId: task.id, action });
+    archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
+    await refreshActiveTasks();
+    expandedHistoryTaskId.value = "";
+  } catch (err) {
+    window.alert(err || "历史任务操作失败");
+  }
+}
+
+function canUndoTask(task) {
+  return !task.is_recurring || String(task.occurrence_date || "").startsWith(localDateInputValue());
+}
+
+function recurringSummary(setting) {
+  const frequency = { daily: "按日", weekly: "按周", monthly: "按月" }[setting.frequency_type] || "";
+  return `${frequency}${setting.repeat_count > 1 ? ` · ${setting.repeat_count} 次` : ""} · ${setting.generate_time} 生成`;
 }
 
 async function saveTaskChanges() {
@@ -1018,7 +1312,23 @@ async function removeTaskProgress(taskId, eventId) {
 }
 
 function openConfirmation(title, message, action) {
-  confirmation.value = { title, message, action, titleId: "confirm-dialog-title" };
+  confirmation.value = { title, message, action, titleId: "confirm-dialog-title", kind: "delete", isCompleted: false };
+}
+
+function confirmArchiveTask(taskId) {
+  const state = { isCompleted: false };
+  confirmation.value = { title: "归档任务", message: "是否已完成此任务？勾选后将同时记录完成和归档；不勾选则只记录归档。", titleId: "confirm-dialog-title", kind: "archive", isCompleted: false, state, action: async () => {
+    await invoke("archive_task", { owner: currentUser.value, taskId, isCompleted: state.isCompleted });
+    await refreshActiveTasks();
+  } };
+}
+
+function deleteArchivedTask(task) {
+  openConfirmation("删除任务", `确定删除“${task.title}”吗？删除后将从历史和任务列表中隐藏。`, async () => {
+    await invoke("delete_task", { owner: currentUser.value, taskId: task.id });
+    view.value = "history";
+    archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
+  });
 }
 
 function closeConfirmation() {
@@ -1026,7 +1336,9 @@ function closeConfirmation() {
 }
 
 async function confirmAction() {
-  const action = confirmation.value?.action;
+  const current = confirmation.value;
+  if (current?.kind === "archive" && current.state) current.state.isCompleted = current.isCompleted;
+  const action = current?.action;
   closeConfirmation();
   if (action) await action();
 }
@@ -1121,6 +1433,12 @@ function toLocalInputValue(value) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
+function localDateInputValue() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
 function eventText(event) {
   const labels = {
     created: "创建任务",
@@ -1167,7 +1485,3 @@ function normalizeUserName(value) {
   return String(value || "").trim();
 }
 </script>
-
-
-
-
