@@ -38,6 +38,12 @@ npm install
 npm run tauri:dev
 ```
 
+## 测试
+
+```bash
+npm test
+```
+
 ## 构建
 
 ```bash

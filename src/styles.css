@@ -422,6 +422,13 @@ h1 {
   align-items: start;
 }
 
+.task-row.dragging {
+  opacity: 0.55;
+  background: rgba(255, 252, 228, 0.8);
+  border-radius: 6px;
+  box-shadow: 0 4px 10px rgba(48, 37, 15, 0.15);
+}
+
 .complete-button {
   width: 17px;
   height: 17px;

@@ -86,6 +86,7 @@ pub fn run() {
             delete_task_progress,
             complete_task,
             undo_complete_task,
+            reorder_tasks,
             list_milestones,
             add_milestone,
             update_milestone,
@@ -209,6 +210,15 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             }
         })?;
 
+    conn.execute_batch("ALTER TABLE tasks ADD COLUMN sort_order INTEGER;")
+        .or_else(|err| {
+            if is_duplicate_column_error(&err) {
+                Ok(())
+            } else {
+                Err(err)
+            }
+        })?;
+
     migrate_legacy_deadlines(conn)?;
     Ok(())
 }
@@ -258,7 +268,8 @@ fn list_active_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>, 
             LIMIT 1)
         FROM tasks t
         WHERE t.owner = ?1 AND t.archived_at IS NULL
-        ORDER BY t.is_urgent DESC,
+        ORDER BY t.sort_order IS NULL ASC, t.sort_order ASC,
+          t.is_urgent DESC,
           CASE WHEN COALESCE(
             (SELECT MIN(m.planned_at) FROM task_milestones m
               WHERE m.task_id = t.id AND m.completed_at IS NULL),
@@ -571,6 +582,25 @@ fn undo_complete_task(state: State<DbState>, owner: String, task_id: String) -> 
     )
     .map_err(|err| err.to_string())?;
     insert_event(&conn, &task_id, "completion_undone", None, None)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn reorder_tasks(state: State<DbState>, owner: String, ordered_ids: Vec<String>) -> Result<(), String> {
+    let owner = normalize_owner(&owner)?;
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    let now = now_string();
+    for (index, task_id) in ordered_ids.iter().enumerate() {
+        conn.execute(
+            "
+            UPDATE tasks
+            SET sort_order = ?1, updated_at = ?2
+            WHERE id = ?3 AND owner = ?4 AND archived_at IS NULL
+            ",
+            params![index as i64, now, task_id, owner],
+        )
+        .map_err(|err| err.to_string())?;
+    }
     Ok(())
 }
 

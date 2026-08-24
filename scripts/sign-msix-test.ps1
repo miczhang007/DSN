@@ -1,5 +1,5 @@
 param(
-  [string]$PackagePath = 'outputs\Desktop-Sticky-Note_1.1.0.0_x64.msix',
+  [string]$PackagePath = 'outputs\Desktop-Sticky-Note_1.2.0.0_x64.msix',
   [switch]$SkipVerify
 )
 
@@ -9,7 +9,7 @@ $sdkBin = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64'
 $signTool = Join-Path $sdkBin 'signtool.exe'
 $publisher = 'CN=F47FAFC5-B249-47C2-9F9F-3C33FD9E19B4'
 $sourcePackage = Join-Path $root $PackagePath
-$testPackage = Join-Path $root 'outputs\Desktop-Sticky-Note_1.1.0.0_x64-test-signed.msix'
+$testPackage = Join-Path $root 'outputs\Desktop-Sticky-Note_1.2.0.0_x64-test-signed.msix'
 $certificatePath = Join-Path $root 'outputs\Desktop-Sticky-Note-test-signing.cer'
 
 if (-not (Test-Path $signTool)) {

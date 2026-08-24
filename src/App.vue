@@ -94,11 +94,12 @@
       </Transition>
 
       <section v-if="view === 'home'" class="content">
-        <div v-if="activeTasks.length" class="task-list" role="list">
+        <div v-if="activeTasks.length" ref="taskListEl" class="task-list" role="list">
           <article
-            v-for="task in activeTasks"
+            v-for="(task, index) in activeTasks"
             :key="task.id"
             class="task-row"
+            :class="{ dragging: isDragging && dragIndex === index }"
             role="listitem"
           >
             <button
@@ -107,7 +108,12 @@
               :aria-label="`完成 ${task.title}`"
               @click.stop="completeTask(task.id)"
             ></button>
-            <button class="task-main" type="button" @click.stop="openTask(task)">
+            <button
+              class="task-main"
+              type="button"
+              @mousedown.prevent="startRowDrag($event, index)"
+              @click.stop="handleTaskMainClick(task)"
+            >
               <span class="task-title">{{ task.title }}</span>
               <span v-if="task.next_milestone_title || task.next_milestone_planned_at || task.is_urgent" class="task-meta">
                 <span v-if="task.next_milestone_title || task.next_milestone_planned_at" class="next-milestone">
@@ -428,7 +434,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.1.0 - 2026-08-18 13:39";
+const versionLabel = "v1.2.0 - 2026-08-24 10:39";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -535,6 +541,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener("keydown", handleKeydown);
+  window.removeEventListener("mousemove", onRowDragMove);
+  window.removeEventListener("mouseup", endRowDrag);
 });
 
 function toggleMenu() {
@@ -629,6 +637,81 @@ async function refreshActiveTasks() {
     return;
   }
   activeTasks.value = await invoke("list_active_tasks", { owner: currentUser.value });
+}
+
+const taskListEl = ref(null);
+const isDragging = ref(false);
+const dragIndex = ref(-1);
+const dragMoved = ref(false);
+const dragStartY = ref(0);
+let suppressClick = false;
+
+function startRowDrag(event, index) {
+  if (event.button !== 0) return;
+  suppressClick = false;
+  dragMoved.value = false;
+  dragStartY.value = event.clientY;
+  isDragging.value = true;
+  dragIndex.value = index;
+  window.addEventListener("mousemove", onRowDragMove);
+  window.addEventListener("mouseup", endRowDrag);
+}
+
+function onRowDragMove(event) {
+  if (!isDragging.value) return;
+  if (!dragMoved.value && Math.abs(event.clientY - dragStartY.value) < 5) return;
+  dragMoved.value = true;
+  const rows = taskListEl.value?.querySelectorAll(".task-row");
+  if (!rows) return;
+  let target = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const rect = rows[i].getBoundingClientRect();
+    if (event.clientY >= rect.top && event.clientY <= rect.bottom) {
+      target = i;
+      break;
+    }
+  }
+  if (target !== -1 && target !== dragIndex.value) {
+    const list = [...activeTasks.value];
+    const [moved] = list.splice(dragIndex.value, 1);
+    list.splice(target, 0, moved);
+    activeTasks.value = list;
+    dragIndex.value = target;
+  }
+}
+
+function endRowDrag() {
+  if (!isDragging.value) return;
+  isDragging.value = false;
+  window.removeEventListener("mousemove", onRowDragMove);
+  window.removeEventListener("mouseup", endRowDrag);
+  if (dragMoved.value) {
+    suppressClick = true;
+    persistOrder();
+  }
+  dragIndex.value = -1;
+  dragMoved.value = false;
+}
+
+async function handleTaskMainClick(task) {
+  if (suppressClick) {
+    suppressClick = false;
+    return;
+  }
+  await openTask(task);
+}
+
+async function persistOrder() {
+  if (!currentUser.value) return;
+  try {
+    await invoke("reorder_tasks", {
+      owner: currentUser.value,
+      orderedIds: activeTasks.value.map((task) => task.id),
+    });
+  } catch (err) {
+    window.alert(err || "保存排序失败");
+    await refreshActiveTasks();
+  }
 }
 
 async function addUser() {
