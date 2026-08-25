@@ -608,7 +608,7 @@ fn delete_task_progress(
 ) -> Result<(), String> {
     let owner = normalize_owner(&owner)?;
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
-    let task = query_task(&conn, &owner, &task_id)?;
+    let _task = query_task(&conn, &owner, &task_id)?;
     let deleted = conn
         .execute(
             "

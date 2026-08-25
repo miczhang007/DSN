@@ -514,7 +514,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.3.0 - 2026-08-25 16:00";
+const versionLabel = "v1.3.0 - 2026-08-25 16:15";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
