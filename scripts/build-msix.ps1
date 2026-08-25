@@ -11,7 +11,7 @@ $outputDir = Join-Path $root 'outputs'
 $binary = Join-Path $root 'src-tauri\target\release\stickynote.exe'
 $sourceIcon = Join-Path $root 'src-tauri\icons\app-icon-source.png'
 $manifest = Join-Path $root 'store\msix\AppxManifest.xml'
-$package = Join-Path $outputDir 'Desktop-Sticky-Note_1.2.0.0_x64.msix'
+$package = Join-Path $outputDir 'Desktop-Sticky-Note_1.3.0.0_x64.msix'
 
 if (-not (Test-Path $makeAppx)) {
   throw "Windows SDK makeappx.exe was not found: $makeAppx"

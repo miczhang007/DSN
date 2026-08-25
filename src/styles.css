@@ -659,7 +659,8 @@ h1 {
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   width: 100%;
   padding: 9px 10px;
   color: rgba(37, 31, 20, 0.9);
@@ -667,6 +668,73 @@ h1 {
   border: 1px solid rgba(107, 84, 34, 0.16);
   border-radius: 7px;
   outline: none;
+}
+
+.history-actions {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 10;
+  display: grid;
+  min-width: 104px;
+  gap: 2px;
+  padding: 5px;
+  background: var(--note-menu-bg);
+  border: 1px solid rgba(107, 84, 34, 0.16);
+  border-radius: 7px;
+  box-shadow: 0 8px 18px rgba(58, 45, 18, 0.16);
+}
+
+.history-action-toggle {
+  justify-self: end;
+}
+
+.recurring-tag {
+  width: fit-content;
+  padding: 3px 8px;
+  color: rgba(83, 72, 38, 0.82);
+  background: rgba(255, 252, 228, 0.58);
+  border: 1px solid rgba(107, 84, 34, 0.2);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.detail-action-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.task-type-toggles {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+
+.task-type-toggles .check-field {
+  margin-bottom: 15px;
+}
+
+.weekday-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 10px;
+  margin: -4px 0 12px;
+  color: rgba(64, 51, 27, 0.68);
+  font-size: 13px;
+}
+
+.weekday-picker label {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.form-hint {
+  margin: -5px 0 14px;
+  color: rgba(64, 51, 27, 0.54);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .users-view {
@@ -778,6 +846,7 @@ h1 {
 }
 
 .history-item {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -819,6 +888,17 @@ h1 {
   font-weight: 600;
 }
 
+.recurring-detail-summary {
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.recurring-detail-title {
+  color: rgba(37, 31, 20, 0.88);
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .detail-actions {
   padding: 0 0 12px;
   margin-bottom: 12px;
@@ -833,6 +913,71 @@ h1 {
   padding-top: 12px;
   margin-top: 12px;
   border-top: 1px solid rgba(107, 84, 34, 0.14);
+}
+
+.detail-section h2 {
+  margin: 0 0 9px;
+  color: rgba(64, 51, 27, 0.68);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recurring-completed-count {
+  margin-left: 6px;
+  color: rgba(64, 51, 27, 0.48);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.recurring-detail-section {
+  padding-top: 11px;
+  margin-top: 11px;
+}
+
+.recurring-info-list {
+  display: grid;
+  gap: 6px;
+}
+
+.recurring-info-list p {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  color: rgba(64, 51, 27, 0.54);
+  font-size: 12px;
+}
+
+.recurring-info-list strong {
+  color: rgba(37, 31, 20, 0.82);
+  font-weight: 400;
+}
+
+.section-empty {
+  margin: 0;
+  color: rgba(64, 51, 27, 0.5);
+  font-size: 12px;
+}
+
+.recurring-task-list {
+  gap: 0;
+}
+
+.recurring-task-list .history-main {
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(107, 84, 34, 0.08);
+}
+
+.recurring-task-list small.status-completed {
+  color: rgba(42, 112, 70, 0.82);
+}
+
+.recurring-task-list small.status-uncompleted {
+  color: rgba(174, 102, 29, 0.86);
+}
+
+.recurring-task-list small.status-pending {
+  color: rgba(67, 99, 127, 0.78);
 }
 
 .progress-field textarea {
