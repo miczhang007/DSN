@@ -1307,6 +1307,7 @@ fn refresh_recurring_tasks(conn: &Connection, owner: &str) -> Result<(), String>
             if inserted > 0 {
                 let task_id: String = conn.query_row("SELECT id FROM tasks WHERE recurring_setting_id=?1 AND occurrence_date=?2", params![setting.id, occurrence_key], |row| row.get(0)).map_err(|err| err.to_string())?;
                 insert_event(conn, &task_id, "created", None, Some(&task_title))?;
+                break;
             }
         }
     }
@@ -1323,7 +1324,10 @@ fn setting_applies_on(setting: &RecurringTaskSetting, date: NaiveDate) -> bool {
         if date > end { return false; }
     }
     match setting.frequency_type.as_str() {
-        "daily" => setting.weekdays.split(',').filter_map(|v| v.parse::<u32>().ok()).any(|day| day == date.weekday().num_days_from_monday()),
+        "daily" => {
+            let weekdays: Vec<u32> = setting.weekdays.split(',').filter_map(|v| v.parse::<u32>().ok()).collect();
+            weekdays.into_iter().any(|day| day == date.weekday().num_days_from_monday())
+        },
         "weekly" => date.weekday() == start.weekday(),
         "monthly" => date.day() == start.day().min(28),
         _ => false,
@@ -1516,4 +1520,181 @@ fn normalize_owner(owner: &str) -> Result<String, String> {
 
 fn is_duplicate_column_error(err: &rusqlite::Error) -> bool {
     err.to_string().contains("duplicate column name")
+}
+
+#[cfg(test)]
+mod recurring_task_change_tests {
+    use super::*;
+
+    fn test_connection() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn
+    }
+
+    fn insert_rule(conn: &Connection, id: &str, frequency: &str, repeat_count: i64) {
+        let today = Local::now().date_naive().to_string();
+        conn.execute(
+            "INSERT INTO recurring_task_settings (id, owner, title, is_urgent, date_range_type, start_date, end_date, frequency_type, weekdays, generate_time, repeat_count, created_at, updated_at)
+             VALUES (?1, 'test', '测试规则', 0, 'long', ?2, NULL, ?3, '', '00:00', ?4, ?5, ?5)",
+            params![id, today, frequency, repeat_count, now_string()],
+        ).unwrap();
+    }
+
+    fn daily_setting(weekdays: &str) -> RecurringTaskSetting {
+        RecurringTaskSetting {
+            id: "setting-1".to_string(), owner: "test".to_string(), title: "每日任务".to_string(),
+            is_urgent: false, date_range_type: "long".to_string(), start_date: "2026-08-24".to_string(),
+            end_date: None, frequency_type: "daily".to_string(), weekdays: weekdays.to_string(),
+            generate_time: "06:00".to_string(), repeat_count: 1, created_at: "".to_string(),
+            updated_at: "".to_string(), status: "生效中".to_string(), voided_at: None,
+        }
+    }
+
+    #[test]
+    fn daily_rule_without_weekdays_does_not_apply() {
+        assert!(!setting_applies_on(&daily_setting(""), NaiveDate::from_ymd_opt(2026, 8, 25).unwrap()));
+    }
+
+    #[test]
+    fn daily_rule_with_weekdays_only_applies_on_selected_days() {
+        assert!(setting_applies_on(&daily_setting("0"), NaiveDate::from_ymd_opt(2026, 8, 24).unwrap()));
+        assert!(!setting_applies_on(&daily_setting("0"), NaiveDate::from_ymd_opt(2026, 8, 25).unwrap()));
+    }
+
+    #[test]
+    fn refresh_creates_today_task_for_daily_rule_on_selected_weekday() {
+        let conn = test_connection();
+        insert_rule(&conn, "daily-rule", "daily", 1);
+        let weekday = Local::now().date_naive().weekday().num_days_from_monday().to_string();
+        conn.execute("UPDATE recurring_task_settings SET weekdays=?1 WHERE id='daily-rule'", params![weekday]).unwrap();
+
+        refresh_recurring_tasks(&conn, "test").unwrap();
+
+        let today = Local::now().date_naive().to_string();
+        let task_count: i64 = conn.query_row("SELECT COUNT(1) FROM tasks WHERE recurring_setting_id='daily-rule' AND occurrence_date=?1", params![today], |row| row.get(0)).unwrap();
+        let event_count: i64 = conn.query_row("SELECT COUNT(1) FROM task_events WHERE event_type='created'", [], |row| row.get(0)).unwrap();
+        assert_eq!(task_count, 1);
+        assert_eq!(event_count, 1);
+    }
+
+    #[test]
+    fn refresh_creates_weekly_occurrences_in_sequence() {
+        let conn = test_connection();
+        insert_rule(&conn, "weekly-rule", "weekly", 2);
+
+        refresh_recurring_tasks(&conn, "test").unwrap();
+        let today = Local::now().date_naive().to_string();
+        let first_key = format!("{}#1", today);
+        let second_key = format!("{}#2", today);
+        let first_id: String = conn.query_row("SELECT id FROM tasks WHERE recurring_setting_id='weekly-rule' AND occurrence_date=?1", params![first_key], |row| row.get(0)).unwrap();
+        let second_before: i64 = conn.query_row("SELECT COUNT(1) FROM tasks WHERE recurring_setting_id='weekly-rule' AND occurrence_date=?1", params![second_key.clone()], |row| row.get(0)).unwrap();
+        assert_eq!(second_before, 0);
+
+        conn.execute("UPDATE tasks SET completed_at=?1 WHERE id=?2", params![now_string(), first_id]).unwrap();
+        refresh_recurring_tasks(&conn, "test").unwrap();
+        let second_after: i64 = conn.query_row("SELECT COUNT(1) FROM tasks WHERE recurring_setting_id='weekly-rule' AND occurrence_date=?1", params![second_key], |row| row.get(0)).unwrap();
+        assert_eq!(second_after, 1);
+    }
+
+    #[test]
+    fn refresh_archives_overdue_recurring_task() {
+        let conn = test_connection();
+        let yesterday = (Local::now().date_naive() - chrono::Duration::days(1)).to_string();
+        conn.execute(
+            "INSERT INTO tasks (id, owner, title, is_urgent, created_at, updated_at, recurring_setting_id, occurrence_date)
+             VALUES ('overdue-task', 'test', '过期任务', 0, ?1, ?1, 'old-rule', ?2)",
+            params![now_string(), yesterday],
+        ).unwrap();
+
+        refresh_recurring_tasks(&conn, "test").unwrap();
+        let archived: Option<String> = conn.query_row("SELECT archived_at FROM tasks WHERE id='overdue-task'", [], |row| row.get(0)).unwrap();
+        assert!(archived.is_some());
+    }
+}
+
+#[cfg(test)]
+mod main_scenario_tests {
+    use super::*;
+
+    fn test_connection() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn
+    }
+
+    fn insert_standard_task(conn: &Connection, task_id: &str, title: &str) {
+        let now = now_string();
+        conn.execute(
+            "INSERT INTO tasks (id, owner, title, is_urgent, created_at, updated_at) VALUES (?1, '主场景用户', ?2, 0, ?3, ?3)",
+            params![task_id, title, now],
+        ).unwrap();
+        insert_event(conn, task_id, "created", None, Some(title)).unwrap();
+    }
+
+    #[test]
+    fn standard_task_lifecycle_keeps_data_and_lifecycle_events_consistent() {
+        let conn = test_connection();
+        let task_id = "main-task";
+        insert_standard_task(&conn, task_id, "整理发布资料");
+        let now = now_string();
+
+        conn.execute("INSERT INTO task_milestones (task_id, title, planned_at, created_at, updated_at) VALUES (?1, '完成说明', '2026-08-25', ?2, ?2)", params![task_id, now]).unwrap();
+        insert_event(&conn, task_id, "milestone_created", None, Some("完成说明")).unwrap();
+        insert_event(&conn, task_id, "progress_updated", None, Some("已完成资料整理")).unwrap();
+        conn.execute("UPDATE task_milestones SET completed_at=?1, updated_at=?1 WHERE task_id=?2", params![now, task_id]).unwrap();
+        insert_event(&conn, task_id, "progress_updated", None, Some("完成节点：完成说明")).unwrap();
+        conn.execute("UPDATE tasks SET title='整理发布资料（已确认）', completed_at=?1, archived_at=?1, updated_at=?1 WHERE id=?2", params![now, task_id]).unwrap();
+        insert_event(&conn, task_id, "title_changed", Some("整理发布资料"), Some("整理发布资料（已确认）")).unwrap();
+        insert_event(&conn, task_id, "completed", None, None).unwrap();
+        insert_event(&conn, task_id, "archived", None, None).unwrap();
+
+        let task: (String, Option<String>, Option<String>) = conn.query_row("SELECT title, completed_at, archived_at FROM tasks WHERE id=?1", params![task_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).unwrap();
+        let milestone_completed: Option<String> = conn.query_row("SELECT completed_at FROM task_milestones WHERE task_id=?1", params![task_id], |row| row.get(0)).unwrap();
+        let events: i64 = conn.query_row("SELECT COUNT(1) FROM task_events WHERE task_id=?1 AND event_type IN ('created', 'milestone_created', 'progress_updated', 'title_changed', 'completed', 'archived')", params![task_id], |row| row.get(0)).unwrap();
+        assert_eq!(task.0, "整理发布资料（已确认）");
+        assert!(task.1.is_some() && task.2.is_some() && milestone_completed.is_some());
+        assert_eq!(events, 7);
+    }
+
+    #[test]
+    fn archived_task_can_return_to_current_list_or_be_logically_deleted() {
+        let conn = test_connection();
+        insert_standard_task(&conn, "restored-task", "可恢复任务");
+        insert_standard_task(&conn, "deleted-task", "可删除任务");
+        let now = now_string();
+        conn.execute("UPDATE tasks SET archived_at=?1, completed_at=?1 WHERE id IN ('restored-task', 'deleted-task')", params![now]).unwrap();
+
+        conn.execute("UPDATE tasks SET completed_at=NULL, archived_at=NULL, updated_at=?1 WHERE id='restored-task'", params![now_string()]).unwrap();
+        insert_event(&conn, "restored-task", "completion_undone", None, None).unwrap();
+        conn.execute("UPDATE tasks SET deleted_at=?1, updated_at=?1 WHERE id='deleted-task'", params![now_string()]).unwrap();
+
+        let current_count: i64 = conn.query_row("SELECT COUNT(1) FROM tasks WHERE id='restored-task' AND archived_at IS NULL AND deleted_at IS NULL", [], |row| row.get(0)).unwrap();
+        let archived_visible_count: i64 = conn.query_row("SELECT COUNT(1) FROM tasks WHERE archived_at IS NOT NULL AND deleted_at IS NULL", [], |row| row.get(0)).unwrap();
+        let deleted_count: i64 = conn.query_row("SELECT COUNT(1) FROM tasks WHERE id='deleted-task' AND deleted_at IS NOT NULL", [], |row| row.get(0)).unwrap();
+        assert_eq!(current_count, 1);
+        assert_eq!(archived_visible_count, 0);
+        assert_eq!(deleted_count, 1);
+    }
+
+    #[test]
+    fn recurring_rule_generates_task_and_voiding_prevents_future_generation() {
+        let conn = test_connection();
+        let today = Local::now().date_naive();
+        let weekday = today.weekday().num_days_from_monday().to_string();
+        conn.execute(
+            "INSERT INTO recurring_task_settings (id, owner, title, is_urgent, date_range_type, start_date, frequency_type, weekdays, generate_time, repeat_count, created_at, updated_at) VALUES ('main-rule', '主场景用户', '每日检查', 0, 'long', ?1, 'daily', ?2, '00:00', 1, ?3, ?3)",
+            params![today.to_string(), weekday, now_string()],
+        ).unwrap();
+        conn.execute("INSERT INTO recurring_setting_events (setting_id, event_type, created_at) VALUES ('main-rule', 'created', ?1)", params![now_string()]).unwrap();
+
+        refresh_recurring_tasks(&conn, "主场景用户").unwrap();
+        let generated_count: i64 = conn.query_row("SELECT COUNT(1) FROM tasks WHERE recurring_setting_id='main-rule' AND deleted_at IS NULL", [], |row| row.get(0)).unwrap();
+        conn.execute("UPDATE recurring_task_settings SET voided_at=?1 WHERE id='main-rule'", params![now_string()]).unwrap();
+        conn.execute("INSERT INTO recurring_setting_events (setting_id, event_type, created_at) VALUES ('main-rule', 'voided', ?1)", params![now_string()]).unwrap();
+        assert!(!setting_applies_on(&query_recurring_setting_by_id(&conn, "main-rule").unwrap(), today));
+        let setting_event_count: i64 = conn.query_row("SELECT COUNT(1) FROM recurring_setting_events WHERE setting_id='main-rule' AND event_type='voided'", [], |row| row.get(0)).unwrap();
+        assert_eq!(generated_count, 1);
+        assert_eq!(setting_event_count, 1);
+    }
 }

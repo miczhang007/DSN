@@ -41,8 +41,12 @@ npm run tauri:dev
 ## 测试
 
 ```bash
-npm test
+npm run test:main                 # 通用主场景还原测试
+npm run test:change:recurring     # 当前周期任务变更回归测试
+npm test                          # 全量回归
 ```
+
+测试分层与用例归属见 [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md)。
 
 ## 构建
 

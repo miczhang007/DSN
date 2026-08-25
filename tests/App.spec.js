@@ -111,6 +111,7 @@ describe("桌面便签核心交互", () => {
     const rulesButton = wrapper.findAll("button").find((button) => button.text() === "周期任务规则");
     await rulesButton.trigger("click");
     await wrapper.vm.$nextTick();
+    await flushApp();
     expect(wrapper.find(".recurring-settings-view").exists()).toBe(true);
     await wrapper.find(".history-action-toggle").trigger("click");
     expect(wrapper.find(".history-actions").text()).toContain("删除");
@@ -167,15 +168,27 @@ describe("桌面便签核心交互", () => {
     expect(invokeMock).toHaveBeenCalledWith("add_milestone", expect.objectContaining({ title: "完成初稿" }));
   });
 
-  it("周期规则创建、编辑、作废操作调用对应接口", async () => {
+  it("生效中规则支持编辑与作废", async () => {
+    const activeRule = { ...recurringSettingFixture, status: "生效中" };
+    invokeMock.mockImplementation(async (command) => {
+      if (command === "list_active_tasks" || command === "list_archived_tasks") return [];
+      if (command === "list_recurring_task_settings") return [activeRule];
+      if (command === "list_recurring_setting_tasks" || command === "list_recurring_setting_events") return [];
+      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      return null;
+    });
     localStorage.setItem("current-user", "测试用户");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
-    await openAddForUser(wrapper);
-    await wrapper.find('input[maxlength="80"]').setValue("每日运动");
-    await wrapper.find("input[type=checkbox]").setValue(true);
-    await wrapper.findAll("button").find((button) => button.text() === "添加任务").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("create_recurring_task_setting", expect.objectContaining({ title: "每日运动" }));
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "周期任务规则").trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper.find(".history-action-toggle").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "编辑规则").trigger("click");
+    await wrapper.find('input[maxlength="80"]').setValue("每日运动（更新）");
+    await wrapper.findAll("button").find((button) => button.text() === "保存设置").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("update_recurring_task_setting", expect.objectContaining({ settingId: "setting-1", title: "每日运动（更新）" }));
   });
 
   it("生命周期日志在任务详情中展示", async () => {

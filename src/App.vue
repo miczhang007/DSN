@@ -514,7 +514,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.3.0 - 2026-08-24 23:25";
+const versionLabel = "v1.3.0 - 2026-08-25 16:00";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -564,7 +564,7 @@ const draft = reactive({
   startDate: localDateInputValue(),
   endDate: "",
   frequencyType: "daily",
-  weekdays: [],
+  weekdays: [0, 1, 2, 3, 4, 5, 6],
   repeatCount: 1,
   generateTime: "06:00",
   milestones: [],
@@ -583,7 +583,7 @@ const recurringDetail = ref(null);
 const recurringCompletedCount = computed(() => recurringSettingTasks.value.filter((task) => Boolean(task.completed_at)).length);
 const selectedRecurringSettingId = ref("");
 const recurringReturnView = ref("home");
-const recurringDraft = reactive({ title: "", isUrgent: false, dateRangeType: "long", startDate: localDateInputValue(), endDate: "", frequencyType: "daily", weekdays: [], repeatCount: 1, generateTime: "06:00" });
+const recurringDraft = reactive({ title: "", isUrgent: false, dateRangeType: "long", startDate: localDateInputValue(), endDate: "", frequencyType: "daily", weekdays: [0, 1, 2, 3, 4, 5, 6], repeatCount: 1, generateTime: "06:00" });
 const editDraft = reactive({ title: "", isUrgent: false });
 const milestoneFormOpen = ref(false);
 const progressDraft = ref("");
@@ -1056,7 +1056,7 @@ async function createTask() {
     draft.startDate = localDateInputValue();
     draft.endDate = "";
     draft.frequencyType = "daily";
-    draft.weekdays = [];
+    draft.weekdays = [0, 1, 2, 3, 4, 5, 6];
     draft.generateTime = "06:00";
     view.value = "home";
     await refreshActiveTasks();
