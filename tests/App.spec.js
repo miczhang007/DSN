@@ -118,6 +118,43 @@ describe("桌面便签核心交互", () => {
     expect(wrapper.find(".history-actions").text()).not.toContain("作废");
   });
 
+  it("已作废规则的删除操作会打开应用内确认弹窗", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    const rulesButton = wrapper.findAll("button").find((button) => button.text() === "周期任务规则");
+    await rulesButton.trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper.find(".history-action-toggle").trigger("click");
+    await wrapper.find(".history-actions button").trigger("click");
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("删除周期任务规则");
+  });
+
+  it("作废周期规则的确认按钮显示确认作废", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    const activeSetting = { ...recurringSettingFixture, status: "生效中" };
+    invokeMock.mockImplementation(async (command) => {
+      if (command === "list_active_tasks") return [];
+      if (command === "list_recurring_task_settings") return [activeSetting];
+      if (command === "set_minimal_mode" || command === "is_auto_start_enabled") return false;
+      return null;
+    });
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    const rulesButton = wrapper.findAll("button").find((button) => button.text() === "周期任务规则");
+    await rulesButton.trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper.find(".history-action-toggle").trigger("click");
+    const voidButton = wrapper.findAll(".history-actions button").find((button) => button.text() === "作废");
+    await voidButton.trigger("click");
+    expect(document.querySelector(".confirm-button").textContent).toContain("确认作废");
+  });
+
   it("离开规则列表后自动收起弹出菜单", async () => {
     localStorage.setItem("current-user", "测试用户");
     const wrapper = mountApp();
@@ -138,6 +175,7 @@ describe("桌面便签核心交互", () => {
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
     await openAddForUser(wrapper);
+    expect(wrapper.find(".milestone-editor h2").exists()).toBe(false);
     await wrapper.find('input[maxlength="80"]').setValue("整理资料");
     const addMilestone = wrapper.findAll("button").find((button) => button.text() === "添加节点");
     await addMilestone.trigger("click");
@@ -155,6 +193,7 @@ describe("桌面便签核心交互", () => {
     await flushApp();
     await wrapper.find(".task-main").trigger("click");
     await wrapper.vm.$nextTick();
+    expect(wrapper.find(".milestone-section h2").exists()).toBe(false);
     await wrapper.find('.detail-actions input[maxlength="80"]').setValue("整理资料（已更新）");
     await wrapper.findAll("button").find((button) => button.text() === "保存变更").trigger("click");
     await wrapper.find('textarea[placeholder*="记录当前进展"]').setValue("已完成资料分类");
@@ -176,6 +215,52 @@ describe("桌面便签核心交互", () => {
     await wrapper.find("input[type=checkbox]").setValue(true);
     await wrapper.findAll("button").find((button) => button.text() === "添加任务").trigger("click");
     expect(invokeMock).toHaveBeenCalledWith("create_recurring_task_setting", expect.objectContaining({ title: "每日运动" }));
+  });
+
+  it("从周期任务详情进入规则编辑时读取最新规则", async () => {
+    const latestSetting = { ...recurringSettingFixture, title: "每日运动（已修改）", status: "生效中" };
+    const recurringTask = { ...taskFixture, is_recurring: true, recurring_setting_id: recurringSettingFixture.id };
+    invokeMock.activeTasks = [recurringTask];
+    localStorage.setItem("current-user", "测试用户");
+    invokeMock.mockImplementation(async (command) => {
+      if (command === "list_active_tasks") return [recurringTask];
+      if (command === "get_task") return recurringTask;
+      if (command === "get_task_events" || command === "list_milestones" || command === "list_recurring_setting_tasks" || command === "list_recurring_setting_events") return [];
+      if (command === "list_recurring_task_settings") return [latestSetting];
+      if (command === "set_minimal_mode" || command === "is_auto_start_enabled") return false;
+      return null;
+    });
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".task-main").trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper.findAll("button").find((button) => button.text() === "周期任务").trigger("click");
+    await flushApp();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('.form-view input[maxlength="80"]').element.value).toBe("每日运动（已修改）");
+    expect(invokeMock).toHaveBeenCalledWith("list_recurring_task_settings", { owner: "测试用户" });
+  });
+
+  it("接口错误显示应用内提示，不调用原生 alert", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    invokeMock.mockImplementation(async (command) => {
+      if (command === "list_active_tasks") return [];
+      if (command === "set_minimal_mode" || command === "is_auto_start_enabled") return false;
+      if (command === "set_auto_start_enabled") throw new Error("自启动写入失败");
+      return null;
+    });
+    const alertSpy = vi.spyOn(window, "alert");
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.find('input[role="switch"]').setValue(true);
+    await flushApp();
+    expect(document.querySelector('[role="alert"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("自启动写入失败");
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
   });
 
   it("生命周期日志在任务详情中展示", async () => {

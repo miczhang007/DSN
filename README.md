@@ -49,3 +49,7 @@ npm test
 ```bash
 npm run tauri:build
 ```
+
+## Microsoft Store 发布
+
+MSIX 市场包的固定身份、版本规则和构建命令见 [Microsoft Store MSIX 发布说明](docs/MICROSOFT_STORE_MSIX_RELEASE.md)。

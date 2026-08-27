@@ -366,7 +366,6 @@
           <button class="text-button" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">保存变更</button>
 
           <div class="detail-section milestone-section">
-            <h2>节点</h2>
             <div v-if="milestones.length" class="milestone-list">
               <div
                 v-for="milestone in milestones"
@@ -499,10 +498,18 @@
         </label>
         <div class="confirm-actions">
           <button class="text-button" type="button" @click="closeConfirmation">取消</button>
-          <button class="text-button danger confirm-button" type="button" @click="confirmAction">{{ confirmation.kind === 'archive' ? '提交' : '确认删除' }}</button>
+          <button class="text-button danger confirm-button" type="button" @click="confirmAction">{{ confirmation.actionLabel }}</button>
         </div>
       </section>
     </div>
+  </Teleport>
+  <Teleport to="body">
+    <Transition name="toast">
+      <div v-if="notice" class="app-notice" role="alert" aria-live="assertive">
+        <span>{{ notice.message }}</span>
+        <button type="button" class="icon-button" aria-label="关闭提示" @click="closeNotice">×</button>
+      </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -514,7 +521,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.3.0 - 2026-08-24 23:25";
+const versionLabel = "v1.3.1 - 2026-08-27 16:00";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -588,9 +595,11 @@ const editDraft = reactive({ title: "", isUrgent: false });
 const milestoneFormOpen = ref(false);
 const progressDraft = ref("");
 const confirmation = ref(null);
+const notice = ref(null);
 const expandedHistoryTaskId = ref("");
 const detailReturnView = ref("home");
 let recurringRefreshTimer = null;
+let noticeTimer = null;
 
 const viewTitle = computed(() => {
   const titles = {
@@ -627,6 +636,7 @@ onMounted(async () => {
   notePosition.value = localStorage.getItem("note-position") || "top-right";
   minimalModeEnabled.value = localStorage.getItem("minimal-mode") === "true";
   window.addEventListener("keydown", handleKeydown);
+  window.addEventListener("pointerdown", closeExpandedHistoryActions, true);
 
   if (currentUser.value) {
     await refreshActiveTasks();
@@ -652,9 +662,11 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener("keydown", handleKeydown);
+  window.removeEventListener("pointerdown", closeExpandedHistoryActions, true);
   window.removeEventListener("mousemove", onRowDragMove);
   window.removeEventListener("mouseup", endRowDrag);
   if (recurringRefreshTimer) window.clearInterval(recurringRefreshTimer);
+  if (noticeTimer) window.clearTimeout(noticeTimer);
 });
 
 function toggleMenu() {
@@ -663,6 +675,11 @@ function toggleMenu() {
 
 function closeMenu() {
   menuOpen.value = false;
+}
+
+function closeExpandedHistoryActions(event) {
+  if (!expandedHistoryTaskId.value || event.target?.closest?.(".history-action-toggle, .history-actions")) return;
+  expandedHistoryTaskId.value = "";
 }
 
 function handleKeydown(event) {
@@ -746,7 +763,7 @@ function voidRecurringSetting(setting) {
     await invoke("void_recurring_task_setting", { owner: currentUser.value, settingId: setting.id });
     expandedHistoryTaskId.value = "";
     recurringSettings.value = await invoke("list_recurring_task_settings", { owner: currentUser.value });
-  });
+  }, "确认作废");
 }
 
 function deleteRecurringSetting(setting) {
@@ -756,7 +773,7 @@ function deleteRecurringSetting(setting) {
       expandedHistoryTaskId.value = "";
       recurringSettings.value = await invoke("list_recurring_task_settings", { owner: currentUser.value });
     } catch (err) {
-      window.alert(err || "删除周期任务规则失败");
+      showNotice(err, "删除周期任务规则失败");
     }
   });
 }
@@ -788,7 +805,9 @@ async function openRecurringSettingDetail(setting) {
 }
 
 async function openRecurringSettingById(id) {
-  const setting = recurringSettings.value.find((item) => item.id === id) || (await invoke("list_recurring_task_settings", { owner: currentUser.value })).find((item) => item.id === id);
+  const latestSettings = await invoke("list_recurring_task_settings", { owner: currentUser.value });
+  recurringSettings.value = latestSettings;
+  const setting = latestSettings.find((item) => item.id === id);
   if (setting) await openRecurringSetting(setting);
 }
 
@@ -816,7 +835,9 @@ async function saveRecurringSetting() {
   const payload = { owner: currentUser.value, title: recurringDraft.title, isUrgent: false, dateRangeType: recurringDraft.dateRangeType, startDate: recurringDraft.startDate, endDate: recurringDraft.dateRangeType === "range" ? recurringDraft.endDate || null : null, frequencyType: recurringDraft.frequencyType, weekdays: recurringDraft.weekdays, repeatCount: recurringDraft.repeatCount, generateTime: recurringDraft.generateTime };
   if (selectedRecurringSettingId.value) {
     if (recurringDraft.status === "已作废") return;
-    await invoke("update_recurring_task_setting", { ...payload, settingId: selectedRecurringSettingId.value });
+    const updated = await invoke("update_recurring_task_setting", { ...payload, settingId: selectedRecurringSettingId.value });
+    recurringSettings.value = recurringSettings.value.map((setting) => setting.id === updated.id ? updated : setting);
+    if (recurringDetail.value?.id === updated.id) recurringDetail.value = updated;
   } else {
     await invoke("create_recurring_task_setting", payload);
   }
@@ -943,7 +964,7 @@ async function persistOrder() {
       orderedIds: activeTasks.value.map((task) => task.id),
     });
   } catch (err) {
-    window.alert(err || "保存排序失败");
+    showNotice(err, "保存排序失败");
     await refreshActiveTasks();
   }
 }
@@ -1135,7 +1156,7 @@ async function historyAction(task, action) {
     await refreshActiveTasks();
     expandedHistoryTaskId.value = "";
   } catch (err) {
-    window.alert(err || "历史任务操作失败");
+    showNotice(err, "历史任务操作失败");
   }
 }
 
@@ -1311,13 +1332,14 @@ async function removeTaskProgress(taskId, eventId) {
   await openTask(updated);
 }
 
-function openConfirmation(title, message, action) {
-  confirmation.value = { title, message, action, titleId: "confirm-dialog-title", kind: "delete", isCompleted: false };
+function openConfirmation(title, message, action, actionLabel = "确认删除") {
+  expandedHistoryTaskId.value = "";
+  confirmation.value = { title, message, action, actionLabel, titleId: "confirm-dialog-title", kind: "delete", isCompleted: false };
 }
 
 function confirmArchiveTask(taskId) {
   const state = { isCompleted: false };
-  confirmation.value = { title: "归档任务", message: "是否已完成此任务？勾选后将同时记录完成和归档；不勾选则只记录归档。", titleId: "confirm-dialog-title", kind: "archive", isCompleted: false, state, action: async () => {
+  confirmation.value = { title: "归档任务", message: "是否已完成此任务？勾选后将同时记录完成和归档；不勾选则只记录归档。", actionLabel: "提交", titleId: "confirm-dialog-title", kind: "archive", isCompleted: false, state, action: async () => {
     await invoke("archive_task", { owner: currentUser.value, taskId, isCompleted: state.isCompleted });
     await refreshActiveTasks();
   } };
@@ -1340,7 +1362,32 @@ async function confirmAction() {
   if (current?.kind === "archive" && current.state) current.state.isCompleted = current.isCompleted;
   const action = current?.action;
   closeConfirmation();
-  if (action) await action();
+  if (!action) return;
+  try {
+    await action();
+  } catch (err) {
+    showNotice(err, "操作失败，请稍后重试");
+  }
+}
+
+function messageFromError(error, fallback) {
+  if (typeof error === "string" && error.trim()) return error;
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+function showNotice(error, fallback) {
+  notice.value = { message: messageFromError(error, fallback) };
+  if (noticeTimer) window.clearTimeout(noticeTimer);
+  noticeTimer = window.setTimeout(closeNotice, 5000);
+}
+
+function closeNotice() {
+  notice.value = null;
+  if (noticeTimer) {
+    window.clearTimeout(noticeTimer);
+    noticeTimer = null;
+  }
 }
 
 async function changeNoteSize(size) {
@@ -1369,7 +1416,7 @@ async function changeAutoStart(enabled) {
     autoStartEnabled.value = await invoke("set_auto_start_enabled", { enabled });
   } catch (err) {
     autoStartEnabled.value = previous;
-    window.alert(err || "设置开机自启动失败");
+    showNotice(err, "设置开机自启动失败");
   }
 }
 
@@ -1381,7 +1428,7 @@ async function changeMinimalMode(enabled) {
     localStorage.setItem("minimal-mode", String(minimalModeEnabled.value));
   } catch (err) {
     minimalModeEnabled.value = previous;
-    window.alert(err || "设置极简模式失败");
+    showNotice(err, "设置极简模式失败");
   }
 }
 
@@ -1401,7 +1448,7 @@ async function openExternal(url) {
   try {
     await invoke("open_external_link", { url });
   } catch (err) {
-    window.alert(err || "打开链接失败");
+    showNotice(err, "打开链接失败");
   }
 }
 

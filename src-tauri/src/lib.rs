@@ -1190,6 +1190,12 @@ fn set_minimal_mode(app: AppHandle, enabled: bool) -> Result<bool, String> {
     window
         .set_skip_taskbar(enabled)
         .map_err(|err| format!("设置任务栏显示失败：{err}"))?;
+    window
+        .set_always_on_top(false)
+        .map_err(|err| format!("设置窗口常驻失败：{err}"))?;
+    window
+        .set_always_on_bottom(enabled)
+        .map_err(|err| format!("设置窗口层级失败：{err}"))?;
     Ok(enabled)
 }
 
@@ -1207,9 +1213,12 @@ fn set_auto_start_enabled(app: AppHandle, enabled: bool) -> Result<bool, String>
     let status = if enabled {
         let exe_path = std::env::current_exe()
             .map_err(|err| format!("获取程序路径失败：{err}"))?
-            .to_string_lossy()
-            .to_string();
-        let launch_value = format!("\"{exe_path}\"");
+            .canonicalize()
+            .map_err(|err| format!("解析程序路径失败：{err}"))?;
+        let executable = exe_path
+            .to_str()
+            .ok_or_else(|| "程序路径包含不支持的字符".to_string())?;
+        let launch_value = format!("\"{executable}\"");
         Command::new("reg")
             .args([
                 "add",
@@ -1237,7 +1246,7 @@ fn set_auto_start_enabled(app: AppHandle, enabled: bool) -> Result<bool, String>
     .map_err(|err| format!("设置自启动失败：{err}"))?;
 
     if enabled && !status.success() {
-        return Err("开启自启动失败".to_string());
+        return Err(format!("开启自启动失败（退出码：{:?}）", status.code()));
     }
     if !enabled && !status.success() {
         return Ok(false);
