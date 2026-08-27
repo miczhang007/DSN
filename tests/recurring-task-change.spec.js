@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe("本次变更回归：周期任务", () => {
-  it("新建按日规则时默认选择周一至周日，并按所选日期提交", async () => {
+  it("新建按日规则时默认不预选工作日，并按所选日期提交", async () => {
     localStorage.setItem("current-user", "测试用户");
     const wrapper = mount(App);
     await wrapper.vm.$nextTick();
@@ -28,7 +28,7 @@ describe("本次变更回归：周期任务", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("create_recurring_task_setting", expect.objectContaining({
       title: "每日运动",
-      weekdays: [0, 1, 2, 3, 4, 5, 6],
+      weekdays: [],
     }));
   });
 });
