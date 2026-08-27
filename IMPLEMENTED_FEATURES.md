@@ -79,9 +79,9 @@
 
 ## 9. 自动化测试
 
-- 使用 Vitest、Vue Test Utils 与 jsdom 覆盖前端核心交互。
-- 当前覆盖无用户初始化、添加用户后加载任务、删除用户的应用内确认弹窗。
-- 执行 `npm test` 运行一次性测试；执行 `npm run test:watch` 进入监听模式。
+- 使用 Vitest、Vue Test Utils 与 jsdom 覆盖前端核心交互；Rust 单元测试使用内存 SQLite 验证业务逻辑。
+- 自动化测试分为“本次变更回归”与“通用主场景还原”两类；具体用例归属及执行策略见 `docs/TESTING_STRATEGY.md`。
+- 执行 `npm run test:main` 运行通用主场景；执行对应 `test:change:*` 命令运行本次变更回归；`npm test` 执行全量回归；`npm run test:watch` 进入监听模式。
 
 ## 5. 桌面与窗口设置
 
