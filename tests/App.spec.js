@@ -260,10 +260,9 @@ describe("桌面便签核心交互", () => {
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
     await flushApp();
-    await wrapper.find(".task-action-toggle").trigger("click");
-    // 操作成功后后端将返回已完成状态；在触发操作前更新 mock 返回数据
+    // 画圈完成主操作；操作成功后后端将返回已完成状态，先更新 mock 返回数据
     invokeMock.activeTasks = [{ ...taskFixture, id: "t1", title: "写周报", status: "completed", completed_at: "2026-08-31T08:00:00Z" }];
-    await wrapper.findAll(".task-actions button").find((button) => button.text() === "已完成").trigger("click");
+    await wrapper.find(".complete-button").trigger("click");
     expect(invokeMock).toHaveBeenCalledWith("complete_task", { owner: "测试用户", taskId: "t1" });
     await flushApp();
     expect(wrapper.find(".task-title.done").exists()).toBe(true);

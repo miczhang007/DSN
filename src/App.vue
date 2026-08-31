@@ -104,6 +104,13 @@
             role="listitem"
           >
             <button
+              class="complete-button"
+              type="button"
+              :class="{ done: taskStatus(task) === 'completed' }"
+              :aria-label="`完成 ${task.title}`"
+              @click.stop="taskAction(task, 'complete')"
+            ></button>
+            <button
               class="task-main"
               type="button"
               @mousedown.prevent="startRowDrag($event, index)"
@@ -126,16 +133,11 @@
               aria-label="更多操作"
               @click.stop="toggleTaskActions(task.id)"
             >
-              <span class="horizontal-dots" aria-hidden="true">
-                <span></span>
-                <span></span>
-                <span></span>
-              </span>
+              <span class="dropdown-arrow" aria-hidden="true"></span>
             </button>
             <div v-if="expandedTaskActionsId === task.id" class="task-actions" @click.stop>
               <button v-if="taskStatus(task) === 'in_progress'" class="text-button" type="button" @click="taskAction(task, 'suspend')">挂起</button>
               <button v-if="taskStatus(task) === 'suspended'" class="text-button" type="button" @click="taskAction(task, 'activate')">激活</button>
-              <button v-if="!task.completed_at" class="text-button" type="button" @click="taskAction(task, 'complete')">已完成</button>
               <button v-if="taskStatus(task) === 'completed'" class="text-button" type="button" @click="taskAction(task, 'undo_complete')">撤销完成</button>
               <button class="text-button" type="button" @click="taskAction(task, 'archive')">归档</button>
             </div>
@@ -380,7 +382,7 @@
             <button v-if="!selectedTask.completed_at" class="text-button" type="button" @click="detailAction('complete')">已完成</button>
             <button v-if="taskStatus(selectedTask) === 'completed'" class="text-button" type="button" @click="detailAction('undo_complete')">撤销完成</button>
             <button class="text-button" type="button" @click="detailAction('archive')">归档</button>
-            <button class="text-button" type="button" @click="detailEditOpen = !detailEditOpen">{{ detailEditOpen ? '收起编辑' : '任务编辑' }}</button>
+            <button class="text-button" type="button" @click="toggleDetailEdit">{{ detailEditOpen ? '收起编辑' : '任务编辑' }}</button>
             <button class="text-button" type="button" @click="progressFormOpen = !progressFormOpen">{{ progressFormOpen ? '收起进度' : '添加进度' }}</button>
           </div>
           <div v-if="detailEditOpen" class="detail-actions">
@@ -415,13 +417,6 @@
                 class="milestone-row"
                 :class="{ editing: editingMilestoneId === milestone.id }"
               >
-                <button
-                  class="milestone-check"
-                  type="button"
-                  :class="{ done: milestone.completed_at }"
-                  :aria-label="`完成节点 ${milestone.title}`"
-                  @click="completeMilestone(milestone)"
-                ></button>
                 <template v-if="editingMilestoneId === milestone.id">
                   <div class="milestone-edit-fields">
                     <input v-model.trim="milestoneEditDraft.title" type="text" maxlength="40" placeholder="节点名称" />
@@ -446,10 +441,7 @@
                     </span>
                   </div>
                   <div v-if="detailEditOpen" class="milestone-actions">
-                    <button v-if="milestone.completed_at" class="text-button" type="button" @click="undoCompleteMilestone(milestone)">
-                      撤销
-                    </button>
-                    <button v-else class="text-button" type="button" @click="startMilestoneEdit(milestone)">
+                    <button v-if="!milestone.completed_at" class="text-button" type="button" @click="startMilestoneEdit(milestone)">
                       编辑
                     </button>
                     <button class="text-button danger" type="button" @click="deleteMilestone(milestone)">
@@ -494,7 +486,7 @@
             <button class="text-button progress-submit" type="button" :disabled="!progressDraft" @click="saveTaskProgress">添加进度</button>
           </div>
         </template>
-        <div class="event-list">
+        <div v-if="!detailEditOpen && !progressFormOpen" class="event-list">
           <h2>生命周期</h2>
           <div v-for="event in taskEvents" :key="event.id" class="event-row">
             <time>{{ formatTime(event.created_at) }}</time>
@@ -563,7 +555,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.0 - 2026-08-31 16:03";
+const versionLabel = "v1.4.0 - 2026-08-31 16:25";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -1269,6 +1261,11 @@ async function taskAction(task, action) {
   }
 }
 
+function toggleDetailEdit() {
+  detailEditOpen.value = !detailEditOpen.value;
+  if (!detailEditOpen.value) editingMilestoneId.value = null;
+}
+
 async function detailAction(action) {
   if (!selectedTask.value) return;
   const taskId = selectedTask.value.id;
@@ -1398,26 +1395,6 @@ async function saveMilestoneEdit(milestone) {
       : null,
   });
   editingMilestoneId.value = null;
-  await reloadTaskDetail();
-}
-
-async function completeMilestone(milestone) {
-  if (!selectedTask.value || milestone.completed_at) return;
-  await invoke("complete_milestone", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-    milestoneId: milestone.id,
-  });
-  await reloadTaskDetail();
-}
-
-async function undoCompleteMilestone(milestone) {
-  if (!selectedTask.value) return;
-  await invoke("undo_complete_milestone", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-    milestoneId: milestone.id,
-  });
   await reloadTaskDetail();
 }
 
