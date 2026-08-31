@@ -506,18 +506,6 @@ h1 {
   text-align: left;
 }
 
-.task-title-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
-}
-
-.task-title-row .task-title {
-  flex: 1;
-  min-width: 0;
-}
-
 .task-title {
   overflow: hidden;
   color: rgba(37, 31, 20, 0.9);
