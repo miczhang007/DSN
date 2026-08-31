@@ -456,9 +456,10 @@ h1 {
 }
 
 .task-row {
+  position: relative;
   display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 9px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
   align-items: start;
 }
 
@@ -469,18 +470,13 @@ h1 {
   box-shadow: 0 4px 10px rgba(48, 37, 15, 0.15);
 }
 
-.complete-button {
-  width: 17px;
-  height: 17px;
-  margin-top: 3px;
-  border: 1.5px solid rgba(69, 54, 25, 0.58);
-  border-radius: 50%;
-  background: rgba(255, 249, 220, 0.2);
-  cursor: default;
+.task-row.suspended .task-title {
+  color: rgba(64, 51, 27, 0.42);
 }
 
-.complete-button:hover {
-  background: rgba(255, 255, 255, 0.38);
+.task-title.done {
+  color: rgba(64, 51, 27, 0.5);
+  text-decoration: line-through;
 }
 
 .task-main {
@@ -528,6 +524,72 @@ h1 {
   background: rgba(250, 210, 202, 0.85);
   border-radius: 4px;
   font-weight: 600;
+}
+
+.status-chip {
+  flex: 0 0 auto;
+  padding: 1px 7px 2px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.status-chip.status-in_progress {
+  color: rgba(42, 112, 70, 0.88);
+  background: rgba(204, 231, 186, 0.78);
+}
+
+.status-chip.status-not_started {
+  color: rgba(57, 92, 124, 0.9);
+  background: rgba(201, 224, 242, 0.82);
+}
+
+.status-chip.status-suspended {
+  color: rgba(99, 95, 83, 0.88);
+  background: rgba(224, 220, 208, 0.85);
+}
+
+.status-chip.status-recurring {
+  color: rgba(122, 94, 30, 0.9);
+  background: rgba(240, 228, 186, 0.85);
+}
+
+.status-chip.status-completed {
+  color: rgba(83, 112, 55, 0.86);
+  background: rgba(214, 237, 200, 0.62);
+}
+
+.status-chip.status-uncompleted {
+  color: rgba(174, 102, 29, 0.9);
+  background: rgba(250, 234, 205, 0.8);
+}
+
+.start-time {
+  overflow: hidden;
+  color: rgba(57, 92, 124, 0.78);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-action-toggle {
+  justify-self: end;
+  margin-top: -2px;
+}
+
+.task-actions {
+  position: absolute;
+  top: 30px;
+  right: 0;
+  z-index: 10;
+  display: grid;
+  min-width: 96px;
+  gap: 2px;
+  padding: 5px;
+  background: var(--note-menu-bg);
+  border: 1px solid rgba(107, 84, 34, 0.16);
+  border-radius: 7px;
+  box-shadow: 0 8px 18px rgba(58, 45, 18, 0.16);
 }
 
 .milestone-section h2 {
@@ -926,6 +988,28 @@ h1 {
 .detail-summary strong {
   font-size: 18px;
   font-weight: 600;
+}
+
+.detail-meta-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.detail-field {
+  color: rgba(64, 51, 27, 0.6);
+  font-size: 12px;
+}
+
+.detail-actions-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(107, 84, 34, 0.09);
 }
 
 .recurring-detail-summary {

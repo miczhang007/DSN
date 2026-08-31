@@ -28,6 +28,9 @@ const taskFixture = {
   recurring_setting_id: null,
   occurrence_date: null,
   is_recurring: false,
+  suspended_at: null,
+  start_at: null,
+  status: "in_progress",
 };
 
 const defaultInvoke = async (command) => {
@@ -51,6 +54,12 @@ function mountApp() {
 
 async function flushApp() {
   await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function openTaskRow(wrapper, text) {
+  const row = wrapper.findAll(".task-main").find((main) => main.text().includes(text));
+  await row.trigger("click");
+  await wrapper.vm.$nextTick();
 }
 
 describe("桌面便签核心交互", () => {
@@ -185,6 +194,100 @@ describe("桌面便签核心交互", () => {
     expect(invokeMock).toHaveBeenCalledWith("create_task", expect.objectContaining({ owner: "测试用户", title: "整理资料" }));
   });
 
+  it("勾选未来任务后创建任务提交开始执行时间", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await openAddForUser(wrapper);
+    await wrapper.find('input[maxlength="80"]').setValue("下周启动项目");
+    const futureCheckbox = wrapper
+      .findAll('input[type="checkbox"]')
+      .find((input) => input.element.closest("label").textContent.includes("未来任务"));
+    await futureCheckbox.setValue(true);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('input[type="datetime-local"]').exists()).toBe(true);
+    await wrapper.find('input[type="datetime-local"]').setValue("2026-09-05T09:00");
+    await wrapper.findAll("button").find((button) => button.text() === "添加任务").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("create_task", expect.objectContaining({
+      title: "下周启动项目",
+      startAt: new Date("2026-09-05T09:00").toISOString(),
+    }));
+  });
+
+  it("任务列表展示细分状态标签", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    invokeMock.activeTasks = [
+      { ...taskFixture, id: "t1", title: "进行中任务", status: "in_progress" },
+      { ...taskFixture, id: "t2", title: "未来任务", status: "not_started", start_at: "2999-01-01T00:00:00Z" },
+      { ...taskFixture, id: "t3", title: "挂起任务", status: "suspended", suspended_at: "2026-08-24T08:00:00Z" },
+      { ...taskFixture, id: "t4", title: "周期任务", status: "recurring", is_recurring: true, recurring_setting_id: "setting-1" },
+    ];
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    const listText = wrapper.find(".task-list").text();
+    expect(listText).toContain("进行中");
+    expect(listText).toContain("未开始");
+    expect(listText).toContain("已挂起");
+    expect(listText).toContain("周期任务");
+  });
+
+  it("挂起与激活任务调用对应接口", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    invokeMock.activeTasks = [{ ...taskFixture, id: "t1", title: "写周报", status: "in_progress" }];
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".task-action-toggle").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".task-actions").text()).toContain("挂起");
+    // 操作成功后后端将返回已挂起状态；在触发操作前更新 mock 返回数据
+    invokeMock.activeTasks = [{ ...taskFixture, id: "t1", title: "写周报", status: "suspended", suspended_at: "2026-08-24T08:00:00Z" }];
+    await wrapper.findAll(".task-actions button").find((button) => button.text() === "挂起").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("suspend_task", { owner: "测试用户", taskId: "t1" });
+
+    await wrapper.find(".task-action-toggle").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".task-actions").text()).toContain("激活");
+    invokeMock.activeTasks = [{ ...taskFixture, id: "t1", title: "写周报", status: "in_progress" }];
+    await wrapper.findAll(".task-actions button").find((button) => button.text() === "激活").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("activate_task", { owner: "测试用户", taskId: "t1" });
+  });
+
+  it("完成任务后保留在当前列表并以划线展示", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    invokeMock.activeTasks = [{ ...taskFixture, id: "t1", title: "写周报", status: "in_progress" }];
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".task-action-toggle").trigger("click");
+    // 操作成功后后端将返回已完成状态；在触发操作前更新 mock 返回数据
+    invokeMock.activeTasks = [{ ...taskFixture, id: "t1", title: "写周报", status: "completed", completed_at: "2026-08-31T08:00:00Z" }];
+    await wrapper.findAll(".task-actions button").find((button) => button.text() === "已完成").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("complete_task", { owner: "测试用户", taskId: "t1" });
+    await flushApp();
+    expect(wrapper.find(".task-title.done").exists()).toBe(true);
+    expect(wrapper.find(".task-list").text()).toContain("已完成");
+  });
+
+  it("任务详情默认收起编辑与进度，点击操作按钮后展开", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    invokeMock.activeTasks = [{ ...taskFixture, id: "t1", title: "写周报" }];
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".task-main").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('.detail-actions input[maxlength="80"]').exists()).toBe(false);
+    expect(wrapper.find('textarea[placeholder*="记录当前进展"]').exists()).toBe(false);
+    await wrapper.findAll("button").find((button) => button.text() === "编辑").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('.detail-actions input[maxlength="80"]').exists()).toBe(true);
+    await wrapper.findAll("button").find((button) => button.text() === "进度").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('textarea[placeholder*="记录当前进展"]').exists()).toBe(true);
+  });
+
   it("任务详情支持编辑、进度和节点维护", async () => {
     invokeMock.activeTasks = [taskFixture];
     localStorage.setItem("current-user", "测试用户");
@@ -193,17 +296,24 @@ describe("桌面便签核心交互", () => {
     await flushApp();
     await wrapper.find(".task-main").trigger("click");
     await wrapper.vm.$nextTick();
-    expect(wrapper.find(".milestone-section h2").exists()).toBe(false);
+    await wrapper.findAll("button").find((button) => button.text() === "编辑").trigger("click");
+    await wrapper.vm.$nextTick();
     await wrapper.find('.detail-actions input[maxlength="80"]').setValue("整理资料（已更新）");
     await wrapper.findAll("button").find((button) => button.text() === "保存变更").trigger("click");
-    await wrapper.find('textarea[placeholder*="记录当前进展"]').setValue("已完成资料分类");
-    await wrapper.find(".progress-submit").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("update_task", expect.objectContaining({ title: "整理资料（已更新）" }));
+    // 保存后收起编辑；再次展开维护节点
+    await wrapper.findAll("button").find((button) => button.text() === "编辑").trigger("click");
+    await wrapper.vm.$nextTick();
     await wrapper.findAll("button").find((button) => button.text() === "添加节点").trigger("click");
     await wrapper.find('input[placeholder="节点名称"]').setValue("完成初稿");
     await wrapper.find("form.milestone-form").trigger("submit");
-    expect(invokeMock).toHaveBeenCalledWith("update_task", expect.objectContaining({ title: "整理资料（已更新）" }));
-    expect(invokeMock).toHaveBeenCalledWith("add_task_progress", expect.objectContaining({ progress: "已完成资料分类" }));
     expect(invokeMock).toHaveBeenCalledWith("add_milestone", expect.objectContaining({ title: "完成初稿" }));
+    // 点击进度展开后记录进度
+    await wrapper.findAll("button").find((button) => button.text() === "进度").trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper.find('textarea[placeholder*="记录当前进展"]').setValue("已完成资料分类");
+    await wrapper.find(".progress-submit").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("add_task_progress", expect.objectContaining({ progress: "已完成资料分类" }));
   });
 
   it("周期规则创建、编辑、作废操作调用对应接口", async () => {
@@ -278,5 +388,31 @@ describe("桌面便签核心交互", () => {
     await wrapper.find(".task-main").trigger("click");
     await wrapper.vm.$nextTick();
     expect(wrapper.find(".event-list").text()).toContain("创建任务");
+  });
+
+  it("生命周期日志展示挂起、激活与系统自动归档事件", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    invokeMock.mockImplementation(async (command) => {
+      if (command === "list_active_tasks") return [{ ...taskFixture, id: "t1", title: "写周报" }];
+      if (command === "get_task_events") return [
+        { id: 1, event_type: "created", created_at: "2026-08-24T08:00:00Z" },
+        { id: 2, event_type: "started", after_value: "2026-08-25T01:00:00Z", created_at: "2026-08-25T01:00:00Z" },
+        { id: 3, event_type: "suspended", created_at: "2026-08-26T02:00:00Z" },
+        { id: 4, event_type: "activated", created_at: "2026-08-27T03:00:00Z" },
+        { id: 5, event_type: "archived", after_value: "auto", created_at: "2026-08-28T04:00:00Z" },
+      ];
+      if (command === "list_milestones") return [];
+      return null;
+    });
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".task-main").trigger("click");
+    await wrapper.vm.$nextTick();
+    const text = wrapper.find(".event-list").text();
+    expect(text).toContain("任务开始执行");
+    expect(text).toContain("挂起任务");
+    expect(text).toContain("激活任务");
+    expect(text).toContain("系统自动归档（隔天）");
   });
 });
