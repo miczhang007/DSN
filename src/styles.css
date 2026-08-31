@@ -456,8 +456,9 @@ h1 {
 }
 
 .task-row {
+  position: relative;
   display: grid;
-  grid-template-columns: 24px 1fr;
+  grid-template-columns: 24px minmax(0, 1fr);
   gap: 9px;
   align-items: start;
 }
@@ -467,6 +468,15 @@ h1 {
   background: rgba(255, 252, 228, 0.8);
   border-radius: 6px;
   box-shadow: 0 4px 10px rgba(48, 37, 15, 0.15);
+}
+
+.task-row.suspended .task-title {
+  color: rgba(64, 51, 27, 0.42);
+}
+
+.task-title.done {
+  color: rgba(64, 51, 27, 0.5);
+  text-decoration: line-through;
 }
 
 .complete-button {
@@ -481,6 +491,11 @@ h1 {
 
 .complete-button:hover {
   background: rgba(255, 255, 255, 0.38);
+}
+
+.complete-button.done {
+  border-color: rgba(83, 112, 55, 0.65);
+  background: rgba(83, 112, 55, 0.4);
 }
 
 .task-main {
@@ -530,6 +545,57 @@ h1 {
   font-weight: 600;
 }
 
+.status-chip {
+  flex: 0 0 auto;
+  padding: 1px 7px 2px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.status-chip.status-pending {
+  color: rgba(166, 96, 26, 0.9);
+  background: rgba(250, 233, 200, 0.85);
+}
+
+.status-chip.status-in_progress {
+  color: rgba(42, 112, 70, 0.88);
+  background: rgba(204, 231, 186, 0.78);
+}
+
+.status-chip.status-not_started {
+  color: rgba(57, 92, 124, 0.9);
+  background: rgba(201, 224, 242, 0.82);
+}
+
+.status-chip.status-suspended {
+  color: rgba(99, 95, 83, 0.88);
+  background: rgba(224, 220, 208, 0.85);
+}
+
+.status-chip.status-recurring {
+  color: rgba(122, 94, 30, 0.9);
+  background: rgba(240, 228, 186, 0.85);
+}
+
+.status-chip.status-completed {
+  color: rgba(83, 112, 55, 0.86);
+  background: rgba(214, 237, 200, 0.62);
+}
+
+.status-chip.status-uncompleted {
+  color: rgba(174, 102, 29, 0.9);
+  background: rgba(250, 234, 205, 0.8);
+}
+
+.start-time {
+  overflow: hidden;
+  color: rgba(57, 92, 124, 0.78);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .milestone-section h2 {
   margin: 0 0 8px;
   color: rgba(64, 51, 27, 0.62);
@@ -544,11 +610,15 @@ h1 {
 
 .milestone-row {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
   padding: 7px 0;
   border-bottom: 1px solid rgba(107, 84, 34, 0.09);
+}
+
+.milestone-row.has-check {
+  grid-template-columns: 20px minmax(0, 1fr) auto;
 }
 
 .milestone-row.draft-row {
@@ -556,18 +626,22 @@ h1 {
 }
 
 .milestone-row.editing {
-  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
 .milestone-row.editing .milestone-edit-fields {
-  grid-column: 2;
+  grid-column: 1;
 }
 
 .milestone-row.editing .milestone-actions {
-  grid-column: 2;
+  grid-column: 1;
   justify-self: end;
   margin-top: 2px;
+}
+
+.milestone-list .milestone-row:last-child {
+  border-bottom: none;
 }
 
 .milestone-check {
@@ -582,11 +656,6 @@ h1 {
 
 .milestone-check:hover {
   background: rgba(255, 255, 255, 0.38);
-}
-
-.milestone-check.done {
-  border-color: rgba(83, 112, 55, 0.65);
-  background: rgba(83, 112, 55, 0.4);
 }
 
 .milestone-main {
@@ -885,6 +954,13 @@ h1 {
   gap: 9px;
 }
 
+/* 任务详情页的生命周期栏与上方栏目保持一致的间距与分隔线 */
+.detail-view > .event-list {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(107, 84, 34, 0.14);
+}
+
 .history-item {
   position: relative;
   display: grid;
@@ -928,6 +1004,38 @@ h1 {
   font-weight: 600;
 }
 
+.detail-meta-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.detail-field {
+  color: rgba(64, 51, 27, 0.6);
+  font-size: 12px;
+}
+
+.detail-actions-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.edit-toggles {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.edit-toggles .check-field {
+  margin-bottom: 0;
+}
+
 .recurring-detail-summary {
   gap: 4px;
   margin-bottom: 8px;
@@ -942,7 +1050,6 @@ h1 {
 .detail-actions {
   padding: 0 0 12px;
   margin-bottom: 12px;
-  border-bottom: 1px solid rgba(107, 84, 34, 0.09);
 }
 
 .compact {
