@@ -566,6 +566,11 @@ h1 {
   line-height: 1.45;
 }
 
+.status-chip.status-pending {
+  color: rgba(166, 96, 26, 0.9);
+  background: rgba(250, 233, 200, 0.85);
+}
+
 .status-chip.status-in_progress {
   color: rgba(42, 112, 70, 0.88);
   background: rgba(204, 231, 186, 0.78);

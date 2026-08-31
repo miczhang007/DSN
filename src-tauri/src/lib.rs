@@ -32,6 +32,7 @@ struct Task {
     is_recurring: bool,
     suspended_at: Option<String>,
     start_at: Option<String>,
+    started_at: Option<String>,
     status: String,
 }
 
@@ -121,6 +122,7 @@ pub fn run() {
             archive_task,
             suspend_task,
             activate_task,
+            start_task,
             restore_archived_task,
             complete_task,
             undo_complete_task,
@@ -301,6 +303,8 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
     conn.execute_batch("ALTER TABLE tasks ADD COLUMN start_at TEXT;")
         .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
+    conn.execute_batch("ALTER TABLE tasks ADD COLUMN started_at TEXT;")
+        .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
     conn.execute_batch("ALTER TABLE recurring_task_settings ADD COLUMN repeat_count INTEGER NOT NULL DEFAULT 1;")
         .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
     conn.execute_batch("ALTER TABLE recurring_task_settings ADD COLUMN voided_at TEXT;")
@@ -358,7 +362,7 @@ fn list_active_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>, 
             LIMIT 1),
           t.recurring_setting_id, t.occurrence_date,
           CASE WHEN t.recurring_setting_id IS NULL THEN 0 ELSE 1 END,
-          t.suspended_at, t.start_at, t.deleted_at
+          t.suspended_at, t.start_at, t.deleted_at, t.started_at
         FROM tasks t
         WHERE t.owner = ?1 AND t.archived_at IS NULL AND t.deleted_at IS NULL
         ORDER BY t.sort_order IS NULL ASC, t.sort_order ASC,
@@ -389,7 +393,7 @@ fn list_archived_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>
         SELECT t.id, t.owner, t.title, t.deadline_at, t.is_urgent, t.created_at, t.updated_at, t.completed_at, t.archived_at,
           NULL, NULL, t.recurring_setting_id, t.occurrence_date,
           CASE WHEN t.recurring_setting_id IS NULL THEN 0 ELSE 1 END,
-          t.suspended_at, t.start_at, t.deleted_at
+          t.suspended_at, t.start_at, t.deleted_at, t.started_at
         FROM tasks t
         WHERE t.owner = ?1 AND t.archived_at IS NOT NULL AND t.deleted_at IS NULL
         ORDER BY t.archived_at DESC
@@ -418,7 +422,7 @@ fn get_task(state: State<DbState>, owner: String, task_id: String) -> Result<Tas
                 LIMIT 1),
               t.recurring_setting_id, t.occurrence_date,
               CASE WHEN t.recurring_setting_id IS NULL THEN 0 ELSE 1 END,
-              t.suspended_at, t.start_at, t.deleted_at
+              t.suspended_at, t.start_at, t.deleted_at, t.started_at
             FROM tasks t
             WHERE t.id = ?1 AND t.owner = ?2 AND t.deleted_at IS NULL
             ",
@@ -833,6 +837,10 @@ fn suspend_task(state: State<DbState>, owner: String, task_id: String) -> Result
     if task.suspended_at.is_some() {
         return Ok(());
     }
+    // 挂起仅适用于待完成与进行中任务；未开始任务不能挂起。
+    if task.start_at.as_deref().map(is_future_utc).unwrap_or(false) {
+        return Err("未开始任务不能挂起".to_string());
+    }
     let now = now_string();
     conn.execute(
         "UPDATE tasks SET suspended_at=?1, updated_at=?1 WHERE id=?2 AND owner=?3",
@@ -852,12 +860,40 @@ fn activate_task(state: State<DbState>, owner: String, task_id: String) -> Resul
         return Err("只有已挂起任务可以激活".to_string());
     }
     let now = now_string();
+    // 激活后变更为待完成状态。
     conn.execute(
-        "UPDATE tasks SET suspended_at=NULL, updated_at=?1 WHERE id=?2 AND owner=?3",
+        "UPDATE tasks SET suspended_at=NULL, started_at=NULL, updated_at=?1 WHERE id=?2 AND owner=?3",
         params![now, task_id, owner],
     )
     .map_err(|err| err.to_string())?;
     insert_event(&conn, &task_id, "activated", None, None)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn start_task(state: State<DbState>, owner: String, task_id: String) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    let owner = normalize_owner(&owner)?;
+    let task = query_task(&conn, &owner, &task_id)?;
+    if task.archived_at.is_some() || task.completed_at.is_some() {
+        return Err("已完成或已归档任务不能开始执行".to_string());
+    }
+    if task.suspended_at.is_some() {
+        return Err("已挂起任务不能开始执行，请先激活".to_string());
+    }
+    if task.start_at.as_deref().map(is_future_utc).unwrap_or(false) {
+        return Err("未开始任务不能手动开始执行".to_string());
+    }
+    if task.started_at.is_some() {
+        return Ok(());
+    }
+    let now = now_string();
+    conn.execute(
+        "UPDATE tasks SET started_at=?1, updated_at=?1 WHERE id=?2 AND owner=?3",
+        params![now, task_id, owner],
+    )
+    .map_err(|err| err.to_string())?;
+    insert_event(&conn, &task_id, "started", None, None)?;
     Ok(())
 }
 
@@ -1017,7 +1053,7 @@ fn list_recurring_setting_tasks(state: State<DbState>, owner: String, setting_id
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
     query_recurring_setting(&conn, &owner, &setting_id)?;
     let mut stmt = conn.prepare(
-        "SELECT id, owner, title, deadline_at, is_urgent, created_at, updated_at, completed_at, archived_at, NULL, NULL, recurring_setting_id, occurrence_date, 1, suspended_at, start_at, deleted_at
+        "SELECT id, owner, title, deadline_at, is_urgent, created_at, updated_at, completed_at, archived_at, NULL, NULL, recurring_setting_id, occurrence_date, 1, suspended_at, start_at, deleted_at, started_at
          FROM tasks WHERE owner=?1 AND recurring_setting_id=?2 AND deleted_at IS NULL ORDER BY occurrence_date DESC, created_at DESC"
     ).map_err(|err| err.to_string())?;
     let rows = stmt.query_map(params![owner, setting_id], map_task).map_err(|err| err.to_string())?;
@@ -1578,7 +1614,7 @@ fn query_task(conn: &Connection, owner: &str, task_id: &str) -> Result<Task, Str
         SELECT id, owner, title, deadline_at, is_urgent, created_at, updated_at, completed_at, archived_at,
           NULL, NULL, recurring_setting_id, occurrence_date,
           CASE WHEN recurring_setting_id IS NULL THEN 0 ELSE 1 END,
-          suspended_at, start_at, deleted_at
+          suspended_at, start_at, deleted_at, started_at
         FROM tasks
         WHERE id = ?1 AND owner = ?2
         ",
@@ -1593,10 +1629,10 @@ fn query_task(conn: &Connection, owner: &str, task_id: &str) -> Result<Task, Str
 fn map_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
     let completed_at: Option<String> = row.get(7)?;
     let archived_at: Option<String> = row.get(8)?;
-    let recurring_setting_id: Option<String> = row.get(11)?;
     let suspended_at: Option<String> = row.get(14)?;
     let start_at: Option<String> = row.get(15)?;
     let deleted_at: Option<String> = row.get(16)?;
+    let started_at: Option<String> = row.get(17)?;
     let status = if deleted_at.is_some() {
         "deleted".to_string()
     } else if archived_at.is_some() {
@@ -1605,12 +1641,13 @@ fn map_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
         "completed".to_string()
     } else if suspended_at.is_some() {
         "suspended".to_string()
-    } else if recurring_setting_id.is_some() {
-        "recurring".to_string()
     } else if start_at.as_deref().map(is_future_utc).unwrap_or(false) {
         "not_started".to_string()
-    } else {
+    } else if started_at.is_some() || start_at.is_some() {
+        // 已通过“进行中”操作开始执行，或未来任务已到达开始执行时间
         "in_progress".to_string()
+    } else {
+        "pending".to_string()
     };
     Ok(Task {
         id: row.get(0)?,
@@ -1624,11 +1661,12 @@ fn map_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
         archived_at,
         next_milestone_title: row.get(9)?,
         next_milestone_planned_at: row.get(10)?,
-        recurring_setting_id,
+        recurring_setting_id: row.get(11)?,
         occurrence_date: row.get(12)?,
         is_recurring: row.get::<_, i64>(13)? == 1,
         suspended_at,
         start_at,
+        started_at,
         status,
     })
 }

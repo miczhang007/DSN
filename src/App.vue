@@ -118,6 +118,7 @@
             >
               <span class="task-title-row">
                 <span class="status-chip" :class="`status-${taskStatus(task)}`">{{ taskStatusText(task) }}</span>
+                <span v-if="task.is_recurring" class="status-chip status-recurring">周期任务</span>
                 <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">{{ task.title }}</span>
               </span>
               <span class="task-meta">
@@ -364,8 +365,9 @@
             <span v-if="selectedTask.deadline_at" class="detail-field">截止：{{ formatDeadline(selectedTask.deadline_at) }}</span>
           </div>
           <div class="detail-actions-row">
-            <button v-if="taskStatus(selectedTask) === 'in_progress'" class="text-button" type="button" @click="detailAction('suspend')">挂起</button>
+            <button v-if="taskStatus(selectedTask) === 'pending' || taskStatus(selectedTask) === 'in_progress'" class="text-button" type="button" @click="detailAction('suspend')">挂起</button>
             <button v-if="taskStatus(selectedTask) === 'suspended'" class="text-button" type="button" @click="detailAction('activate')">激活</button>
+            <button v-if="taskStatus(selectedTask) === 'pending'" class="text-button" type="button" @click="detailAction('start')">进行中</button>
             <button v-if="!selectedTask.completed_at" class="text-button" type="button" @click="detailAction('complete')">已完成</button>
             <button v-if="taskStatus(selectedTask) === 'completed'" class="text-button" type="button" @click="detailAction('undo_complete')">撤销完成</button>
             <button class="text-button" type="button" @click="detailAction('archive')">归档</button>
@@ -560,7 +562,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.0 - 2026-08-31 17:01";
+const versionLabel = "v1.4.0 - 2026-08-31 17:20";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -1273,6 +1275,8 @@ async function detailAction(action) {
       await invoke("suspend_task", { owner: currentUser.value, taskId });
     } else if (action === "activate") {
       await invoke("activate_task", { owner: currentUser.value, taskId });
+    } else if (action === "start") {
+      await invoke("start_task", { owner: currentUser.value, taskId });
     } else if (action === "complete") {
       await invoke("complete_task", { owner: currentUser.value, taskId });
     } else if (action === "undo_complete") {
@@ -1657,22 +1661,22 @@ function fallbackTaskStatus(task) {
   if (task.archived_at) return task.completed_at ? "completed" : "uncompleted";
   if (task.completed_at) return "completed";
   if (task.suspended_at) return "suspended";
-  if (task.is_recurring) return "recurring";
   if (task.start_at && new Date(task.start_at).getTime() > Date.now()) return "not_started";
-  return "in_progress";
+  if (task.started_at || task.start_at) return "in_progress";
+  return "pending";
 }
 
 function taskStatusText(task) {
   const labels = {
-    in_progress: "进行中",
+    pending: "待完成",
     not_started: "未开始",
+    in_progress: "进行中",
     suspended: "已挂起",
-    recurring: "周期任务",
     completed: "已完成",
     uncompleted: "未完成",
     deleted: "已删除",
   };
-  return labels[taskStatus(task)] || "进行中";
+  return labels[taskStatus(task)] || "待完成";
 }
 
 function eventText(event) {

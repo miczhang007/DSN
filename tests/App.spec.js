@@ -30,7 +30,8 @@ const taskFixture = {
   is_recurring: false,
   suspended_at: null,
   start_at: null,
-  status: "in_progress",
+  started_at: null,
+  status: "pending",
 };
 
 const defaultInvoke = async (command) => {
@@ -214,38 +215,45 @@ describe("桌面便签核心交互", () => {
     }));
   });
 
-  it("任务列表展示细分状态标签", async () => {
+  it("任务列表展示细分状态标签（周期任务同时展示周期任务标签）", async () => {
     localStorage.setItem("current-user", "测试用户");
     invokeMock.activeTasks = [
-      { ...taskFixture, id: "t1", title: "任务A", status: "in_progress" },
+      { ...taskFixture, id: "t1", title: "任务A", status: "pending" },
       { ...taskFixture, id: "t2", title: "未来任务", status: "not_started", start_at: "2999-01-01T00:00:00Z" },
       { ...taskFixture, id: "t3", title: "挂起任务", status: "suspended", suspended_at: "2026-08-24T08:00:00Z" },
-      { ...taskFixture, id: "t4", title: "周期任务", status: "recurring", is_recurring: true, recurring_setting_id: "setting-1" },
+      { ...taskFixture, id: "t4", title: "周期任务", status: "pending", is_recurring: true, recurring_setting_id: "setting-1" },
+      { ...taskFixture, id: "t5", title: "进行中任务", status: "in_progress", started_at: "2026-08-24T08:00:00Z" },
     ];
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
     await flushApp();
     const chips = wrapper.findAll(".status-chip").map((chip) => chip.text());
-    expect(chips).toContain("进行中");
+    expect(chips).toContain("待完成");
     expect(chips).toContain("未开始");
     expect(chips).toContain("已挂起");
+    expect(chips).toContain("进行中");
     expect(chips).toContain("周期任务");
   });
 
-  it("详情页支持挂起与激活任务", async () => {
+  it("详情页支持待完成开始执行、挂起与激活", async () => {
     localStorage.setItem("current-user", "测试用户");
-    const suspendedTask = { ...taskFixture, id: "t1", title: "写周报", status: "suspended", suspended_at: "2026-08-24T08:00:00Z" };
-    const inProgressTask = { ...taskFixture, id: "t1", title: "写周报", status: "in_progress" };
-    invokeMock.activeTasks = [inProgressTask];
-    invokeMock.mockImplementation(async (command, args) => {
+    const pendingTask = { ...taskFixture, id: "t1", title: "写周报", status: "pending" };
+    const inProgressTask = { ...taskFixture, id: "t1", title: "写周报", status: "in_progress", started_at: "2026-08-31T08:00:00Z" };
+    const suspendedTask = { ...taskFixture, id: "t1", title: "写周报", status: "suspended", suspended_at: "2026-08-31T09:00:00Z" };
+    invokeMock.activeTasks = [pendingTask];
+    invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return invokeMock.activeTasks;
       if (command === "get_task") return invokeMock.activeTasks[0];
+      if (command === "start_task") {
+        invokeMock.activeTasks = [inProgressTask];
+        return null;
+      }
       if (command === "suspend_task") {
         invokeMock.activeTasks = [suspendedTask];
         return null;
       }
       if (command === "activate_task") {
-        invokeMock.activeTasks = [inProgressTask];
+        invokeMock.activeTasks = [pendingTask];
         return null;
       }
       if (command === "get_task_events" || command === "list_milestones") return [];
@@ -257,11 +265,20 @@ describe("桌面便签核心交互", () => {
     await flushApp();
     await wrapper.find(".task-main").trigger("click");
     await wrapper.vm.$nextTick();
+    // 待完成 → 进行中
+    await wrapper.findAll("button").find((button) => button.text() === "进行中").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("start_task", { owner: "测试用户", taskId: "t1" });
+    await flushApp();
+    // 进行中 → 挂起
     await wrapper.findAll("button").find((button) => button.text() === "挂起").trigger("click");
     expect(invokeMock).toHaveBeenCalledWith("suspend_task", { owner: "测试用户", taskId: "t1" });
     await flushApp();
+    // 已挂起 → 激活（变更为待完成）
     await wrapper.findAll("button").find((button) => button.text() === "激活").trigger("click");
     expect(invokeMock).toHaveBeenCalledWith("activate_task", { owner: "测试用户", taskId: "t1" });
+    await flushApp();
+    // 激活后回到待完成，重新出现“进行中”入口
+    expect(wrapper.findAll("button").some((button) => button.text() === "进行中")).toBe(true);
   });
 
   it("完成任务后保留在当前列表并以划线展示", async () => {
