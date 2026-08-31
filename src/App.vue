@@ -118,7 +118,7 @@
             >
               <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">{{ task.title }}</span>
               <span class="task-meta">
-                <span v-if="taskStatus(task) !== 'in_progress'" class="status-chip" :class="`status-${taskStatus(task)}`">{{ taskStatusText(task) }}</span>
+                <span class="status-chip" :class="`status-${taskStatus(task)}`">{{ taskStatusText(task) }}</span>
                 <span v-if="task.next_milestone_title || task.next_milestone_planned_at" class="next-milestone">
                   {{ nextMilestoneText(task) }}
                 </span>
@@ -127,20 +127,6 @@
                 <span v-if="task.start_at && taskStatus(task) === 'not_started'" class="start-time">开始 {{ formatDeadline(task.start_at) }}</span>
               </span>
             </button>
-            <button
-              class="icon-button task-action-toggle"
-              type="button"
-              aria-label="更多操作"
-              @click.stop="toggleTaskActions(task.id)"
-            >
-              <span class="dropdown-arrow" aria-hidden="true"></span>
-            </button>
-            <div v-if="expandedTaskActionsId === task.id" class="task-actions" @click.stop>
-              <button v-if="taskStatus(task) === 'in_progress'" class="text-button" type="button" @click="taskAction(task, 'suspend')">挂起</button>
-              <button v-if="taskStatus(task) === 'suspended'" class="text-button" type="button" @click="taskAction(task, 'activate')">激活</button>
-              <button v-if="taskStatus(task) === 'completed'" class="text-button" type="button" @click="taskAction(task, 'undo_complete')">撤销完成</button>
-              <button class="text-button" type="button" @click="taskAction(task, 'archive')">归档</button>
-            </div>
           </article>
         </div>
         <div v-else class="empty-state">
@@ -239,7 +225,7 @@
         <template v-if="draft.isFuture && !draft.isRecurring">
           <label class="field compact">
             <span>任务开始执行时间</span>
-            <input v-model="draft.startAt" type="datetime-local" />
+            <input v-model="draft.startAt" type="date" />
           </label>
           <p class="form-hint">已自动添加“任务开始执行”节点。未到达开始执行时间时任务显示为“未开始”，到达后自动变更为“进行中”。</p>
         </template>
@@ -280,8 +266,7 @@
             <input v-model.trim="draft.milestoneDraftTitle" type="text" maxlength="40" placeholder="节点名称" />
             <input
               v-model="draft.milestoneDraftPlannedAt"
-              type="datetime-local"
-              @focus="fillDefaultPlannedTime(draft, 'milestoneDraftPlannedAt')"
+              type="date"
             />
             <div class="milestone-form-actions">
               <button class="text-button" type="submit" :disabled="!draft.milestoneDraftTitle">添加</button>
@@ -305,7 +290,7 @@
           >
             <button class="history-main" type="button" @click="openTask(task)">
               <span>{{ task.title }}</span>
-              <small>{{ task.is_recurring ? `${task.completed_at ? '已完成' : '未完成'} · ` : '完成 ' }}{{ formatTime(task.archived_at) }}</small>
+              <small>{{ task.completed_at ? '已完成' : '未完成' }} · {{ formatTime(task.archived_at) }}</small>
             </button>
             <button class="icon-button history-action-toggle" type="button" aria-label="更多操作" @click="toggleHistoryActions(task.id)">
               <span class="vertical-dots" aria-hidden="true"><span></span><span></span><span></span></span>
@@ -402,7 +387,7 @@
             </div>
             <label v-if="editDraft.isFuture && !selectedTask.is_recurring" class="field compact">
               <span>任务开始执行时间</span>
-              <input v-model="editDraft.startAt" type="datetime-local" />
+              <input v-model="editDraft.startAt" type="date" />
             </label>
             <div class="detail-action-row">
               <button class="text-button" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">保存变更</button>
@@ -415,12 +400,19 @@
                 v-for="milestone in milestones"
                 :key="milestone.id"
                 class="milestone-row"
-                :class="{ editing: editingMilestoneId === milestone.id }"
+                :class="{ editing: editingMilestoneId === milestone.id, 'has-check': !detailEditOpen && !milestone.completed_at }"
               >
+                <button
+                  v-if="!detailEditOpen && !milestone.completed_at"
+                  class="milestone-check"
+                  type="button"
+                  :aria-label="`完成节点 ${milestone.title}`"
+                  @click="completeMilestone(milestone)"
+                ></button>
                 <template v-if="editingMilestoneId === milestone.id">
                   <div class="milestone-edit-fields">
                     <input v-model.trim="milestoneEditDraft.title" type="text" maxlength="40" placeholder="节点名称" />
-                    <input v-model="milestoneEditDraft.plannedAt" type="datetime-local" />
+                    <input v-model="milestoneEditDraft.plannedAt" type="date" />
                   </div>
                   <div class="milestone-actions">
                     <button class="text-button" type="button" :disabled="!milestoneEditDraft.title" @click="saveMilestoneEdit(milestone)">
@@ -464,8 +456,7 @@
               <input v-model.trim="milestoneDraft.title" type="text" maxlength="40" placeholder="节点名称" />
               <input
                 v-model="milestoneDraft.plannedAt"
-                type="datetime-local"
-                @focus="fillDefaultPlannedTime(milestoneDraft, 'plannedAt')"
+                type="date"
               />
               <div class="milestone-form-actions">
                 <button class="text-button" type="submit" :disabled="!milestoneDraft.title">添加</button>
@@ -532,7 +523,19 @@
         </label>
         <div class="confirm-actions">
           <button class="text-button" type="button" @click="closeConfirmation">取消</button>
-          <button class="text-button danger confirm-button" type="button" @click="confirmAction">{{ confirmation.actionLabel }}</button>
+          <template v-if="confirmation.choices && confirmation.choices.length">
+            <button
+              v-for="choice in confirmation.choices"
+              :key="choice.label"
+              class="text-button confirm-button"
+              :class="{ danger: choice.danger }"
+              type="button"
+              @click="confirmChoice(choice)"
+            >
+              {{ choice.label }}
+            </button>
+          </template>
+          <button v-else class="text-button danger confirm-button" type="button" @click="confirmAction">{{ confirmation.actionLabel }}</button>
         </div>
       </section>
     </div>
@@ -555,7 +558,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.0 - 2026-08-31 16:25";
+const versionLabel = "v1.4.0 - 2026-08-31 16:47";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -633,7 +636,6 @@ const progressDraft = ref("");
 const confirmation = ref(null);
 const notice = ref(null);
 const expandedHistoryTaskId = ref("");
-const expandedTaskActionsId = ref("");
 const detailEditOpen = ref(false);
 const progressFormOpen = ref(false);
 const detailReturnView = ref("home");
@@ -719,26 +721,20 @@ function closeMenu() {
 }
 
 function closeExpandedHistoryActions(event) {
-  if (!expandedHistoryTaskId.value && !expandedTaskActionsId.value) return;
-  const withinActions = event.target?.closest?.(
-    ".history-action-toggle, .history-actions, .task-action-toggle, .task-actions"
-  );
-  if (withinActions) return;
+  if (!expandedHistoryTaskId.value) return;
+  if (event.target?.closest?.(".history-action-toggle, .history-actions")) return;
   expandedHistoryTaskId.value = "";
-  expandedTaskActionsId.value = "";
 }
 
 function handleKeydown(event) {
   if (event.key === "Escape") {
     menuOpen.value = false;
     expandedHistoryTaskId.value = "";
-    expandedTaskActionsId.value = "";
   }
 }
 
 function goHome() {
   expandedHistoryTaskId.value = "";
-  expandedTaskActionsId.value = "";
   view.value = "home";
   selectedTask.value = null;
   taskEvents.value = [];
@@ -917,13 +913,12 @@ async function openTask(task) {
   }
   menuOpen.value = false;
   expandedHistoryTaskId.value = "";
-  expandedTaskActionsId.value = "";
   detailReturnView.value = view.value === "history" ? "history" : view.value === "recurring-setting" ? "recurring-setting" : "home";
   selectedTask.value = task;
   editDraft.title = task.title;
   editDraft.isUrgent = Boolean(task.is_urgent);
   editDraft.isFuture = Boolean(task.start_at);
-  editDraft.startAt = task.start_at ? toLocalInputValue(task.start_at) : "";
+  editDraft.startAt = task.start_at ? localIsoToDate(task.start_at) : "";
   detailEditOpen.value = false;
   progressFormOpen.value = false;
   progressDraft.value = "";
@@ -1165,14 +1160,14 @@ async function createTask() {
   }
   const milestones = draft.milestones.map((ms) => ({
     title: ms.title,
-    plannedAt: ms.plannedAt ? new Date(ms.plannedAt).toISOString() : null,
+    plannedAt: dateOnlyToIso(ms.plannedAt),
   }));
   await invoke("create_task", {
     owner: currentUser.value,
     title: draft.title,
     deadlineAt: null,
     isUrgent: draft.isUrgent,
-    startAt: draft.isFuture && draft.startAt ? new Date(draft.startAt).toISOString() : null,
+    startAt: draft.isFuture && draft.startAt ? dateOnlyToIso(draft.startAt) : null,
     milestones: milestones.length ? milestones : null,
   });
   draft.title = "";
@@ -1201,13 +1196,6 @@ function removeDraftMilestone(index) {
   draft.milestones.splice(index, 1);
 }
 
-function fillDefaultPlannedTime(target, key) {
-  if (target[key]) return;
-  const now = new Date();
-  now.setMinutes(0, 0, 0);
-  target[key] = toLocalInputValue(now.toISOString());
-}
-
 function toggleFutureTask() {
   if (draft.isFuture && !draft.startAt) {
     draft.startAt = defaultStartTime();
@@ -1222,16 +1210,27 @@ function toggleEditFutureTask() {
 
 function defaultStartTime() {
   const now = new Date();
-  now.setHours(now.getHours() + 1, 0, 0, 0);
-  return toLocalInputValue(now.toISOString());
+  now.setDate(now.getDate() + 1);
+  const offset = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
+// 仅日期输入（YYYY-MM-DD）转为本地当天的 ISO 时间
+function dateOnlyToIso(value) {
+  if (!value) return null;
+  return new Date(`${value}T00:00:00`).toISOString();
+}
+
+// ISO 时间转为本地日期字符串（YYYY-MM-DD）
+function localIsoToDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
 }
 
 function toggleHistoryActions(taskId) {
   expandedHistoryTaskId.value = expandedHistoryTaskId.value === taskId ? "" : taskId;
-}
-
-function toggleTaskActions(taskId) {
-  expandedTaskActionsId.value = expandedTaskActionsId.value === taskId ? "" : taskId;
 }
 
 async function taskAction(task, action) {
@@ -1250,11 +1249,9 @@ async function taskAction(task, action) {
         await invoke("archive_task", { owner: currentUser.value, taskId: task.id, isCompleted: true });
       } else {
         confirmArchiveTask(task.id);
-        expandedTaskActionsId.value = "";
         return;
       }
     }
-    expandedTaskActionsId.value = "";
     await refreshActiveTasks();
   } catch (err) {
     showNotice(err, "任务操作失败");
@@ -1298,6 +1295,14 @@ async function detailAction(action) {
 }
 
 async function historyAction(task, action) {
+  if (action === "undo_completion") {
+    openUndoCompletionConfirmation(task);
+    return;
+  }
+  await runHistoryAction(task, action);
+}
+
+async function runHistoryAction(task, action) {
   try {
     await invoke("restore_archived_task", { owner: currentUser.value, taskId: task.id, action });
     archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
@@ -1306,6 +1311,27 @@ async function historyAction(task, action) {
   } catch (err) {
     showNotice(err, "历史任务操作失败");
   }
+}
+
+function openUndoCompletionConfirmation(task) {
+  expandedHistoryTaskId.value = "";
+  confirmation.value = {
+    title: "撤销完成",
+    message: "是否同时撤销归档状态，将该任务重新加入当前任务列表？",
+    titleId: "confirm-dialog-title",
+    kind: "delete",
+    choices: [
+      { label: "仅撤销完成", action: () => runHistoryAction(task, "undo_completion_only") },
+      { label: "撤销完成并撤销归档", danger: true, action: () => runHistoryAction(task, "undo_completion") },
+    ],
+  };
+}
+
+function confirmChoice(choice) {
+  const action = choice?.action;
+  closeConfirmation();
+  if (!action) return;
+  action().catch((err) => showNotice(err, "操作失败，请稍后重试"));
 }
 
 function canUndoTask(task) {
@@ -1328,7 +1354,7 @@ async function saveTaskChanges() {
     isUrgent: editDraft.isUrgent,
     startAt:
       !selectedTask.value.is_recurring && editDraft.isFuture && editDraft.startAt
-        ? new Date(editDraft.startAt).toISOString()
+        ? dateOnlyToIso(editDraft.startAt)
         : null,
   });
   const updated = await invoke("get_task", {
@@ -1363,9 +1389,7 @@ async function addMilestone() {
     owner: currentUser.value,
     taskId: selectedTask.value.id,
     title: milestoneDraft.title,
-    plannedAt: milestoneDraft.plannedAt
-      ? new Date(milestoneDraft.plannedAt).toISOString()
-      : null,
+    plannedAt: dateOnlyToIso(milestoneDraft.plannedAt),
   });
   milestoneDraft.title = "";
   milestoneDraft.plannedAt = "";
@@ -1376,7 +1400,7 @@ async function addMilestone() {
 function startMilestoneEdit(milestone) {
   editingMilestoneId.value = milestone.id;
   milestoneEditDraft.title = milestone.title;
-  milestoneEditDraft.plannedAt = toLocalInputValue(milestone.planned_at);
+  milestoneEditDraft.plannedAt = localIsoToDate(milestone.planned_at);
 }
 
 function cancelMilestoneEdit() {
@@ -1390,11 +1414,19 @@ async function saveMilestoneEdit(milestone) {
     taskId: selectedTask.value.id,
     milestoneId: milestone.id,
     title: milestoneEditDraft.title,
-    plannedAt: milestoneEditDraft.plannedAt
-      ? new Date(milestoneEditDraft.plannedAt).toISOString()
-      : null,
+    plannedAt: dateOnlyToIso(milestoneEditDraft.plannedAt),
   });
   editingMilestoneId.value = null;
+  await reloadTaskDetail();
+}
+
+async function completeMilestone(milestone) {
+  if (!selectedTask.value || milestone.completed_at) return;
+  await invoke("complete_milestone", {
+    owner: currentUser.value,
+    taskId: selectedTask.value.id,
+    milestoneId: milestone.id,
+  });
   await reloadTaskDetail();
 }
 
@@ -1607,13 +1639,6 @@ function formatTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function toLocalInputValue(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 function localDateInputValue() {

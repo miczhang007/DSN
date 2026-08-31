@@ -870,6 +870,11 @@ fn restore_archived_task(state: State<DbState>, owner: String, task_id: String, 
     let recurring_overdue = task.is_recurring && !recurring_task_is_current(&conn, &task)?;
     let now = now_string();
     match action.as_str() {
+        "undo_completion_only" if task.completed_at.is_some() => {
+            // 仅撤销完成，保留归档状态（任务仍留在历史列表）。
+            conn.execute("UPDATE tasks SET completed_at=NULL, updated_at=?1 WHERE id=?2 AND owner=?3", params![now, task_id, owner]).map_err(|err| err.to_string())?;
+            insert_event(&conn, &task_id, "completion_undone", None, None)?;
+        }
         "undo_completion" if task.completed_at.is_some() => {
             let archived_at = if recurring_overdue { task.archived_at.clone() } else { None };
             conn.execute("UPDATE tasks SET completed_at=NULL, archived_at=?1, updated_at=?2 WHERE id=?3 AND owner=?4", params![archived_at, now, task_id, owner]).map_err(|err| err.to_string())?;

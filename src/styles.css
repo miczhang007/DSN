@@ -458,7 +458,7 @@ h1 {
 .task-row {
   position: relative;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr);
   gap: 9px;
   align-items: start;
 }
@@ -591,35 +591,6 @@ h1 {
   white-space: nowrap;
 }
 
-.task-action-toggle {
-  justify-self: end;
-  margin-top: 2px;
-  font-size: 0;
-}
-
-.dropdown-arrow {
-  width: 0;
-  height: 0;
-  border-top: 6px solid rgba(61, 49, 27, 0.4);
-  border-right: 5px solid transparent;
-  border-left: 5px solid transparent;
-}
-
-.task-actions {
-  position: absolute;
-  top: 30px;
-  right: 0;
-  z-index: 10;
-  display: grid;
-  min-width: 96px;
-  gap: 2px;
-  padding: 5px;
-  background: var(--note-menu-bg);
-  border: 1px solid rgba(107, 84, 34, 0.16);
-  border-radius: 7px;
-  box-shadow: 0 8px 18px rgba(58, 45, 18, 0.16);
-}
-
 .milestone-section h2 {
   margin: 0 0 8px;
   color: rgba(64, 51, 27, 0.62);
@@ -639,6 +610,10 @@ h1 {
   align-items: center;
   padding: 7px 0;
   border-bottom: 1px solid rgba(107, 84, 34, 0.09);
+}
+
+.milestone-row.has-check {
+  grid-template-columns: 20px minmax(0, 1fr) auto;
 }
 
 .milestone-row.draft-row {
@@ -662,6 +637,20 @@ h1 {
 
 .milestone-list .milestone-row:last-child {
   border-bottom: none;
+}
+
+.milestone-check {
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  border: 1.5px solid rgba(69, 54, 25, 0.52);
+  border-radius: 50%;
+  background: rgba(255, 249, 220, 0.2);
+  cursor: default;
+}
+
+.milestone-check:hover {
+  background: rgba(255, 255, 255, 0.38);
 }
 
 .milestone-main {
@@ -1029,7 +1018,6 @@ h1 {
   flex-wrap: wrap;
   padding-bottom: 12px;
   margin-bottom: 12px;
-  border-bottom: 1px solid rgba(107, 84, 34, 0.09);
 }
 
 .edit-toggles {
