@@ -116,9 +116,11 @@
               @mousedown.prevent="startRowDrag($event, index)"
               @click.stop="handleTaskMainClick(task)"
             >
-              <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">{{ task.title }}</span>
-              <span class="task-meta">
+              <span class="task-title-row">
                 <span class="status-chip" :class="`status-${taskStatus(task)}`">{{ taskStatusText(task) }}</span>
+                <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">{{ task.title }}</span>
+              </span>
+              <span class="task-meta">
                 <span v-if="task.next_milestone_title || task.next_milestone_planned_at" class="next-milestone">
                   {{ nextMilestoneText(task) }}
                 </span>
@@ -558,7 +560,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.0 - 2026-08-31 16:47";
+const versionLabel = "v1.4.0 - 2026-08-31 17:01";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
