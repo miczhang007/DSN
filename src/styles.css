@@ -292,6 +292,20 @@ h1 {
   border-radius: 50%;
 }
 
+.horizontal-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+}
+
+.horizontal-dots span {
+  width: 3px;
+  height: 3px;
+  background: currentColor;
+  border-radius: 50%;
+}
+
 .icon-button:hover,
 .text-button:hover,
 .note-menu button:hover {
@@ -1010,6 +1024,17 @@ h1 {
   padding-bottom: 12px;
   margin-bottom: 12px;
   border-bottom: 1px solid rgba(107, 84, 34, 0.09);
+}
+
+.edit-toggles {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.edit-toggles .check-field {
+  margin-bottom: 0;
 }
 
 .recurring-detail-summary {

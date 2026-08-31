@@ -803,11 +803,21 @@ fn archive_task(state: State<DbState>, owner: String, task_id: String, is_comple
     let task = query_task(&conn, &owner, &task_id)?;
     if task.archived_at.is_some() { return Ok(()); }
     let now = now_string();
+    // 已完成任务归档时保留原完成时间；未完成任务按 is_completed 决定是否同时标记完成。
+    let completed_at = if task.completed_at.is_some() {
+        task.completed_at.clone()
+    } else if is_completed {
+        Some(now.clone())
+    } else {
+        None
+    };
     conn.execute(
         "UPDATE tasks SET completed_at=?1, archived_at=?2, updated_at=?2 WHERE id=?3 AND owner=?4",
-        params![if is_completed { Some(now.clone()) } else { Option::<String>::None }, now, task_id, owner],
+        params![completed_at, now, task_id, owner],
     ).map_err(|err| err.to_string())?;
-    if is_completed { insert_event(&conn, &task_id, "completed", None, None)?; }
+    if is_completed && task.completed_at.is_none() {
+        insert_event(&conn, &task_id, "completed", None, None)?;
+    }
     insert_event(&conn, &task_id, "archived", None, None)?;
     Ok(())
 }

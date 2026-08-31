@@ -111,7 +111,7 @@
             >
               <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">{{ task.title }}</span>
               <span class="task-meta">
-                <span class="status-chip" :class="`status-${taskStatus(task)}`">{{ taskStatusText(task) }}</span>
+                <span v-if="taskStatus(task) !== 'in_progress'" class="status-chip" :class="`status-${taskStatus(task)}`">{{ taskStatusText(task) }}</span>
                 <span v-if="task.next_milestone_title || task.next_milestone_planned_at" class="next-milestone">
                   {{ nextMilestoneText(task) }}
                 </span>
@@ -126,7 +126,7 @@
               aria-label="更多操作"
               @click.stop="toggleTaskActions(task.id)"
             >
-              <span class="vertical-dots" aria-hidden="true">
+              <span class="horizontal-dots" aria-hidden="true">
                 <span></span>
                 <span></span>
                 <span></span>
@@ -136,6 +136,7 @@
               <button v-if="taskStatus(task) === 'in_progress'" class="text-button" type="button" @click="taskAction(task, 'suspend')">挂起</button>
               <button v-if="taskStatus(task) === 'suspended'" class="text-button" type="button" @click="taskAction(task, 'activate')">激活</button>
               <button v-if="!task.completed_at" class="text-button" type="button" @click="taskAction(task, 'complete')">已完成</button>
+              <button v-if="taskStatus(task) === 'completed'" class="text-button" type="button" @click="taskAction(task, 'undo_complete')">撤销完成</button>
               <button class="text-button" type="button" @click="taskAction(task, 'archive')">归档</button>
             </div>
           </article>
@@ -360,7 +361,7 @@
           <span class="status-chip" :class="`status-${taskStatus(selectedTask)}`">{{ taskStatusText(selectedTask) }}</span>
           <span v-if="selectedTask.deadline_at">截止：{{ formatDeadline(selectedTask.deadline_at) }}</span>
           <span v-if="selectedTask.is_urgent">紧急</span>
-          <button v-if="selectedTask.is_recurring" class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期任务</button>
+          <button v-if="selectedTask.is_recurring" class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期规则</button>
         </div>
         <template v-else>
           <div class="detail-summary">
@@ -368,7 +369,7 @@
             <div class="detail-meta-row">
               <span class="status-chip" :class="`status-${taskStatus(selectedTask)}`">{{ taskStatusText(selectedTask) }}</span>
               <span v-if="selectedTask.is_urgent" class="urgent-chip">紧急</span>
-              <button v-if="selectedTask.is_recurring" class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期任务</button>
+              <button v-if="selectedTask.is_recurring" class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期规则</button>
             </div>
             <span v-if="selectedTask.start_at" class="detail-field">任务开始执行：{{ formatDeadline(selectedTask.start_at) }}</span>
             <span v-if="selectedTask.deadline_at" class="detail-field">截止：{{ formatDeadline(selectedTask.deadline_at) }}</span>
@@ -377,23 +378,26 @@
             <button v-if="taskStatus(selectedTask) === 'in_progress'" class="text-button" type="button" @click="detailAction('suspend')">挂起</button>
             <button v-if="taskStatus(selectedTask) === 'suspended'" class="text-button" type="button" @click="detailAction('activate')">激活</button>
             <button v-if="!selectedTask.completed_at" class="text-button" type="button" @click="detailAction('complete')">已完成</button>
+            <button v-if="taskStatus(selectedTask) === 'completed'" class="text-button" type="button" @click="detailAction('undo_complete')">撤销完成</button>
             <button class="text-button" type="button" @click="detailAction('archive')">归档</button>
-            <button class="text-button" type="button" @click="detailEditOpen = !detailEditOpen">{{ detailEditOpen ? '收起编辑' : '编辑' }}</button>
-            <button class="text-button" type="button" @click="progressFormOpen = !progressFormOpen">{{ progressFormOpen ? '收起进度' : '进度' }}</button>
+            <button class="text-button" type="button" @click="detailEditOpen = !detailEditOpen">{{ detailEditOpen ? '收起编辑' : '任务编辑' }}</button>
+            <button class="text-button" type="button" @click="progressFormOpen = !progressFormOpen">{{ progressFormOpen ? '收起进度' : '添加进度' }}</button>
           </div>
           <div v-if="detailEditOpen" class="detail-actions">
             <label class="field compact">
               <span>任务内容</span>
               <input v-model.trim="editDraft.title" type="text" maxlength="80" />
             </label>
-            <label v-if="!selectedTask.is_recurring" class="check-field">
-              <input v-model="editDraft.isUrgent" type="checkbox" />
-              <span>紧急</span>
-            </label>
-            <label v-if="!selectedTask.is_recurring" class="check-field">
-              <input v-model="editDraft.isFuture" type="checkbox" @change="toggleEditFutureTask" />
-              <span>未来任务</span>
-            </label>
+            <div v-if="!selectedTask.is_recurring" class="edit-toggles">
+              <label class="check-field">
+                <input v-model="editDraft.isUrgent" type="checkbox" />
+                <span>紧急</span>
+              </label>
+              <label class="check-field">
+                <input v-model="editDraft.isFuture" type="checkbox" @change="toggleEditFutureTask" />
+                <span>未来任务</span>
+              </label>
+            </div>
             <label v-if="editDraft.isFuture && !selectedTask.is_recurring" class="field compact">
               <span>任务开始执行时间</span>
               <input v-model="editDraft.startAt" type="datetime-local" />
@@ -401,79 +405,81 @@
             <div class="detail-action-row">
               <button class="text-button" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">保存变更</button>
             </div>
-            <div v-if="!selectedTask.is_recurring" class="detail-section milestone-section">
-              <div v-if="milestones.length" class="milestone-list">
-                <div
-                  v-for="milestone in milestones"
-                  :key="milestone.id"
-                  class="milestone-row"
-                  :class="{ editing: editingMilestoneId === milestone.id }"
-                >
-                  <button
-                    class="milestone-check"
-                    type="button"
-                    :class="{ done: milestone.completed_at }"
-                    :aria-label="`完成节点 ${milestone.title}`"
-                    @click="completeMilestone(milestone)"
-                  ></button>
-                  <template v-if="editingMilestoneId === milestone.id">
-                    <div class="milestone-edit-fields">
-                      <input v-model.trim="milestoneEditDraft.title" type="text" maxlength="40" placeholder="节点名称" />
-                      <input v-model="milestoneEditDraft.plannedAt" type="datetime-local" />
-                    </div>
-                    <div class="milestone-actions">
-                      <button class="text-button" type="button" :disabled="!milestoneEditDraft.title" @click="saveMilestoneEdit(milestone)">
-                        保存
-                      </button>
-                      <button class="text-button" type="button" @click="cancelMilestoneEdit">
-                        取消
-                      </button>
-                    </div>
-                  </template>
-                  <template v-else>
-                    <div class="milestone-main">
-                      <span class="milestone-title" :class="{ done: milestone.completed_at }">{{ milestone.title }}</span>
-                      <span class="milestone-meta">
-                        <span v-if="milestone.planned_at">计划 {{ formatDeadline(milestone.planned_at) }}</span>
-                        <span v-if="milestone.completed_at">完成 {{ formatTime(milestone.completed_at) }}</span>
-                        <span v-else-if="isMilestoneOverdue(milestone.planned_at)" class="overdue-chip">已延迟</span>
-                      </span>
-                    </div>
-                    <div class="milestone-actions">
-                      <button v-if="milestone.completed_at" class="text-button" type="button" @click="undoCompleteMilestone(milestone)">
-                        撤销
-                      </button>
-                      <button v-else class="text-button" type="button" @click="startMilestoneEdit(milestone)">
-                        编辑
-                      </button>
-                      <button class="text-button danger" type="button" @click="deleteMilestone(milestone)">
-                        删除
-                      </button>
-                    </div>
-                  </template>
-                </div>
-              </div>
-              <button
-                v-if="!milestoneFormOpen"
-                class="text-button"
-                type="button"
-                @click="openMilestoneForm"
+          </div>
+          <div v-if="!selectedTask.is_recurring" class="detail-section milestone-section">
+            <h2>节点</h2>
+            <div v-if="milestones.length" class="milestone-list">
+              <div
+                v-for="milestone in milestones"
+                :key="milestone.id"
+                class="milestone-row"
+                :class="{ editing: editingMilestoneId === milestone.id }"
               >
-                添加节点
-              </button>
-              <form v-else class="milestone-form" @submit.prevent="addMilestone">
-                <input v-model.trim="milestoneDraft.title" type="text" maxlength="40" placeholder="节点名称" />
-                <input
-                  v-model="milestoneDraft.plannedAt"
-                  type="datetime-local"
-                  @focus="fillDefaultPlannedTime(milestoneDraft, 'plannedAt')"
-                />
-                <div class="milestone-form-actions">
-                  <button class="text-button" type="submit" :disabled="!milestoneDraft.title">添加</button>
-                  <button class="text-button" type="button" @click="closeMilestoneForm">收起</button>
-                </div>
-              </form>
+                <button
+                  class="milestone-check"
+                  type="button"
+                  :class="{ done: milestone.completed_at }"
+                  :aria-label="`完成节点 ${milestone.title}`"
+                  @click="completeMilestone(milestone)"
+                ></button>
+                <template v-if="editingMilestoneId === milestone.id">
+                  <div class="milestone-edit-fields">
+                    <input v-model.trim="milestoneEditDraft.title" type="text" maxlength="40" placeholder="节点名称" />
+                    <input v-model="milestoneEditDraft.plannedAt" type="datetime-local" />
+                  </div>
+                  <div class="milestone-actions">
+                    <button class="text-button" type="button" :disabled="!milestoneEditDraft.title" @click="saveMilestoneEdit(milestone)">
+                      保存
+                    </button>
+                    <button class="text-button" type="button" @click="cancelMilestoneEdit">
+                      取消
+                    </button>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="milestone-main">
+                    <span class="milestone-title" :class="{ done: milestone.completed_at }">{{ milestone.title }}</span>
+                    <span class="milestone-meta">
+                      <span v-if="milestone.planned_at">计划 {{ formatDeadline(milestone.planned_at) }}</span>
+                      <span v-if="milestone.completed_at">完成 {{ formatTime(milestone.completed_at) }}</span>
+                      <span v-else-if="isMilestoneOverdue(milestone.planned_at)" class="overdue-chip">已延迟</span>
+                    </span>
+                  </div>
+                  <div v-if="detailEditOpen" class="milestone-actions">
+                    <button v-if="milestone.completed_at" class="text-button" type="button" @click="undoCompleteMilestone(milestone)">
+                      撤销
+                    </button>
+                    <button v-else class="text-button" type="button" @click="startMilestoneEdit(milestone)">
+                      编辑
+                    </button>
+                    <button class="text-button danger" type="button" @click="deleteMilestone(milestone)">
+                      删除
+                    </button>
+                  </div>
+                </template>
+              </div>
             </div>
+            <p v-else class="section-empty">暂无节点</p>
+            <button
+              v-if="detailEditOpen && !milestoneFormOpen"
+              class="text-button"
+              type="button"
+              @click="openMilestoneForm"
+            >
+              添加节点
+            </button>
+            <form v-if="detailEditOpen && milestoneFormOpen" class="milestone-form" @submit.prevent="addMilestone">
+              <input v-model.trim="milestoneDraft.title" type="text" maxlength="40" placeholder="节点名称" />
+              <input
+                v-model="milestoneDraft.plannedAt"
+                type="datetime-local"
+                @focus="fillDefaultPlannedTime(milestoneDraft, 'plannedAt')"
+              />
+              <div class="milestone-form-actions">
+                <button class="text-button" type="submit" :disabled="!milestoneDraft.title">添加</button>
+                <button class="text-button" type="button" @click="closeMilestoneForm">收起</button>
+              </div>
+            </form>
           </div>
           <div v-if="progressFormOpen" class="detail-section progress-section">
             <label class="field compact progress-field">
@@ -557,7 +563,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.0 - 2026-08-31 15:32";
+const versionLabel = "v1.4.0 - 2026-08-31 16:03";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -1244,10 +1250,17 @@ async function taskAction(task, action) {
       await invoke("activate_task", { owner: currentUser.value, taskId: task.id });
     } else if (action === "complete") {
       await invoke("complete_task", { owner: currentUser.value, taskId: task.id });
+    } else if (action === "undo_complete") {
+      await invoke("undo_complete_task", { owner: currentUser.value, taskId: task.id });
     } else if (action === "archive") {
-      confirmArchiveTask(task.id);
-      expandedTaskActionsId.value = "";
-      return;
+      // 已完成任务直接归档（保留已完成状态），未完成任务走确认弹窗
+      if (taskStatus(task) === "completed") {
+        await invoke("archive_task", { owner: currentUser.value, taskId: task.id, isCompleted: true });
+      } else {
+        confirmArchiveTask(task.id);
+        expandedTaskActionsId.value = "";
+        return;
+      }
     }
     expandedTaskActionsId.value = "";
     await refreshActiveTasks();
@@ -1266,9 +1279,15 @@ async function detailAction(action) {
       await invoke("activate_task", { owner: currentUser.value, taskId });
     } else if (action === "complete") {
       await invoke("complete_task", { owner: currentUser.value, taskId });
+    } else if (action === "undo_complete") {
+      await invoke("undo_complete_task", { owner: currentUser.value, taskId });
     } else if (action === "archive") {
-      confirmArchiveTask(taskId);
-      return;
+      if (taskStatus(selectedTask.value) === "completed") {
+        await invoke("archive_task", { owner: currentUser.value, taskId, isCompleted: true });
+      } else {
+        confirmArchiveTask(taskId);
+        return;
+      }
     }
     const updated = await invoke("get_task", {
       owner: currentUser.value,
