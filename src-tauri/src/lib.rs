@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
@@ -482,10 +482,17 @@ fn create_task(
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
     let now = now_string();
     let id = uuid::Uuid::new_v4().to_string();
+    // 新任务默认排到当前任务第一位：现有已排序的活动任务整体后移一位。
+    conn.execute(
+        "UPDATE tasks SET sort_order = sort_order + 1, updated_at = ?1
+         WHERE owner = ?2 AND archived_at IS NULL AND deleted_at IS NULL AND sort_order IS NOT NULL",
+        params![now, owner],
+    )
+    .map_err(|err| err.to_string())?;
     conn.execute(
         "
-        INSERT INTO tasks (id, owner, title, deadline_at, is_urgent, start_at, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+        INSERT INTO tasks (id, owner, title, deadline_at, is_urgent, start_at, created_at, updated_at, sort_order)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, 0)
         ",
         params![
             id,
@@ -1474,8 +1481,8 @@ fn record_task_start_events(conn: &Connection, owner: &str) -> Result<(), String
     let due: Vec<(String, String)> = rows
         .filter_map(|row| row.ok())
         .filter(|(_, start_at)| {
-            DateTime::parse_from_rfc3339(start_at)
-                .map(|parsed| parsed.with_timezone(&Utc) <= Utc::now())
+            parse_datetime_utc(start_at)
+                .map(|parsed| parsed <= Utc::now())
                 .unwrap_or(false)
         })
         .collect();
@@ -1672,9 +1679,25 @@ fn map_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
 }
 
 fn is_future_utc(value: &str) -> bool {
-    DateTime::parse_from_rfc3339(value)
-        .map(|parsed| parsed.with_timezone(&Utc) > Utc::now())
+    parse_datetime_utc(value)
+        .map(|parsed| parsed > Utc::now())
         .unwrap_or(false)
+}
+
+/// 解析完整时间（RFC3339）或仅日期（YYYY-MM-DD，按本地当天零点）为 UTC 时间。
+fn parse_datetime_utc(value: &str) -> Option<DateTime<Utc>> {
+    if let Ok(parsed) = DateTime::parse_from_rfc3339(value) {
+        return Some(parsed.with_timezone(&Utc));
+    }
+    let date = NaiveDate::parse_from_str(value, "%Y-%m-%d").ok()?;
+    let naive = date.and_hms_opt(0, 0, 0)?;
+    Some(
+        Local
+            .from_local_datetime(&naive)
+            .earliest()
+            .unwrap_or_else(|| Local.from_utc_datetime(&naive))
+            .with_timezone(&Utc),
+    )
 }
 
 fn map_recurring_setting(row: &rusqlite::Row) -> rusqlite::Result<RecurringTaskSetting> {

@@ -779,6 +779,21 @@ h1 {
   outline: none;
 }
 
+.date-time-inputs {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.date-time-inputs input {
+  min-width: 0;
+  flex: 1;
+}
+
+.milestone-edit-fields .date-time-inputs {
+  margin-top: 6px;
+}
+
 .history-actions {
   position: absolute;
   top: 34px;

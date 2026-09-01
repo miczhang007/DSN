@@ -226,9 +226,12 @@
         <template v-if="draft.isFuture && !draft.isRecurring">
           <label class="field compact">
             <span>任务开始执行时间</span>
-            <input v-model="draft.startAt" type="date" />
+            <span class="date-time-inputs">
+              <input v-model="draft.startAt" type="date" />
+              <input v-model="draft.startAtTime" type="time" />
+            </span>
           </label>
-          <p class="form-hint">已自动添加“任务开始执行”节点。未到达开始执行时间时任务显示为“未开始”，到达后自动变更为“进行中”。</p>
+          <p class="form-hint">已自动添加“任务开始执行”节点。未指定具体时间时仅按日期执行并只展示日期；到达开始执行时间前任务显示为“未开始”。</p>
         </template>
         <template v-if="draft.isRecurring">
           <label class="field compact"><span>时间范围</span><select v-model="draft.dateRangeType"><option value="long">长期</option><option value="range">指定日期</option></select></label>
@@ -265,10 +268,17 @@
           </button>
           <form v-else class="milestone-form" @submit.prevent="addDraftMilestone">
             <input v-model.trim="draft.milestoneDraftTitle" type="text" maxlength="40" placeholder="节点名称" />
-            <input
-              v-model="draft.milestoneDraftPlannedAt"
-              type="date"
-            />
+            <span class="date-time-inputs">
+              <input
+                v-model="draft.milestoneDraftPlannedAt"
+                type="date"
+                placeholder="计划日期"
+              />
+              <input
+                v-model="draft.milestoneDraftPlannedAtTime"
+                type="time"
+              />
+            </span>
             <div class="milestone-form-actions">
               <button class="text-button" type="submit" :disabled="!draft.milestoneDraftTitle">添加</button>
               <button class="text-button" type="button" @click="draft.milestoneFormOpen = false">收起</button>
@@ -389,7 +399,10 @@
             </div>
             <label v-if="editDraft.isFuture && !selectedTask.is_recurring" class="field compact">
               <span>任务开始执行时间</span>
-              <input v-model="editDraft.startAt" type="date" />
+              <span class="date-time-inputs">
+                <input v-model="editDraft.startAt" type="date" />
+                <input v-model="editDraft.startAtTime" type="time" />
+              </span>
             </label>
             <div class="detail-action-row">
               <button class="text-button" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">保存变更</button>
@@ -414,7 +427,10 @@
                 <template v-if="editingMilestoneId === milestone.id">
                   <div class="milestone-edit-fields">
                     <input v-model.trim="milestoneEditDraft.title" type="text" maxlength="40" placeholder="节点名称" />
-                    <input v-model="milestoneEditDraft.plannedAt" type="date" />
+                    <span class="date-time-inputs">
+                      <input v-model="milestoneEditDraft.plannedAt" type="date" />
+                      <input v-model="milestoneEditDraft.plannedAtTime" type="time" />
+                    </span>
                   </div>
                   <div class="milestone-actions">
                     <button class="text-button" type="button" :disabled="!milestoneEditDraft.title" @click="saveMilestoneEdit(milestone)">
@@ -456,10 +472,16 @@
             </button>
             <form v-if="detailEditOpen && milestoneFormOpen" class="milestone-form" @submit.prevent="addMilestone">
               <input v-model.trim="milestoneDraft.title" type="text" maxlength="40" placeholder="节点名称" />
-              <input
-                v-model="milestoneDraft.plannedAt"
-                type="date"
-              />
+              <span class="date-time-inputs">
+                <input
+                  v-model="milestoneDraft.plannedAt"
+                  type="date"
+                />
+                <input
+                  v-model="milestoneDraft.plannedAtTime"
+                  type="time"
+                />
+              </span>
               <div class="milestone-form-actions">
                 <button class="text-button" type="submit" :disabled="!milestoneDraft.title">添加</button>
                 <button class="text-button" type="button" @click="closeMilestoneForm">收起</button>
@@ -560,7 +582,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.0 - 2026-08-31 17:26";
+const versionLabel = "v1.4.0 - 2026-09-01 13:53";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -599,15 +621,16 @@ const archivedTasks = ref([]);
 const selectedTask = ref(null);
 const taskEvents = ref([]);
 const milestones = ref([]);
-const milestoneDraft = reactive({ title: "", plannedAt: "" });
+const milestoneDraft = reactive({ title: "", plannedAt: "", plannedAtTime: "" });
 const editingMilestoneId = ref(null);
-const milestoneEditDraft = reactive({ title: "", plannedAt: "" });
+const milestoneEditDraft = reactive({ title: "", plannedAt: "", plannedAtTime: "" });
 const draft = reactive({
   title: "",
   isUrgent: false,
   isRecurring: false,
   isFuture: false,
   startAt: "",
+  startAtTime: "",
   dateRangeType: "long",
   startDate: localDateInputValue(),
   endDate: "",
@@ -618,6 +641,7 @@ const draft = reactive({
   milestones: [],
   milestoneDraftTitle: "",
   milestoneDraftPlannedAt: "",
+  milestoneDraftPlannedAtTime: "",
   milestoneFormOpen: false,
 });
 const weekdayOptions = [
@@ -632,7 +656,7 @@ const recurringCompletedCount = computed(() => recurringSettingTasks.value.filte
 const selectedRecurringSettingId = ref("");
 const recurringReturnView = ref("home");
 const recurringDraft = reactive({ title: "", isUrgent: false, dateRangeType: "long", startDate: localDateInputValue(), endDate: "", frequencyType: "daily", weekdays: [], repeatCount: 1, generateTime: "06:00" });
-const editDraft = reactive({ title: "", isUrgent: false, isFuture: false, startAt: "" });
+const editDraft = reactive({ title: "", isUrgent: false, isFuture: false, startAt: "", startAtTime: "" });
 const milestoneFormOpen = ref(false);
 const progressDraft = ref("");
 const confirmation = ref(null);
@@ -920,7 +944,9 @@ async function openTask(task) {
   editDraft.title = task.title;
   editDraft.isUrgent = Boolean(task.is_urgent);
   editDraft.isFuture = Boolean(task.start_at);
-  editDraft.startAt = task.start_at ? localIsoToDate(task.start_at) : "";
+  const startParts = splitIsoForInput(task.start_at);
+  editDraft.startAt = startParts.date;
+  editDraft.startAtTime = startParts.time;
   detailEditOpen.value = false;
   progressFormOpen.value = false;
   progressDraft.value = "";
@@ -956,7 +982,7 @@ function scheduleStartRefresh() {
   let nearest = Infinity;
   for (const task of activeTasks.value) {
     if (taskStatus(task) === "not_started" && task.start_at) {
-      const at = new Date(task.start_at).getTime();
+      const at = parseStartAtTime(task.start_at);
       if (at > now && at < nearest) nearest = at;
     }
   }
@@ -1150,6 +1176,7 @@ async function createTask() {
     draft.isRecurring = false;
     draft.isFuture = false;
     draft.startAt = "";
+    draft.startAtTime = "";
     draft.dateRangeType = "long";
     draft.startDate = localDateInputValue();
     draft.endDate = "";
@@ -1162,14 +1189,14 @@ async function createTask() {
   }
   const milestones = draft.milestones.map((ms) => ({
     title: ms.title,
-    plannedAt: dateOnlyToIso(ms.plannedAt),
+    plannedAt: dateTimeToIso(ms.plannedAt, ms.plannedAtTime),
   }));
   await invoke("create_task", {
     owner: currentUser.value,
     title: draft.title,
     deadlineAt: null,
     isUrgent: draft.isUrgent,
-    startAt: draft.isFuture && draft.startAt ? dateOnlyToIso(draft.startAt) : null,
+    startAt: draft.isFuture ? dateTimeToIso(draft.startAt, draft.startAtTime) : null,
     milestones: milestones.length ? milestones : null,
   });
   draft.title = "";
@@ -1177,9 +1204,11 @@ async function createTask() {
   draft.isRecurring = false;
   draft.isFuture = false;
   draft.startAt = "";
+  draft.startAtTime = "";
   draft.milestones = [];
   draft.milestoneDraftTitle = "";
   draft.milestoneDraftPlannedAt = "";
+  draft.milestoneDraftPlannedAtTime = "";
   view.value = "home";
   await refreshActiveTasks();
 }
@@ -1189,9 +1218,11 @@ function addDraftMilestone() {
   draft.milestones.push({
     title: draft.milestoneDraftTitle,
     plannedAt: draft.milestoneDraftPlannedAt,
+    plannedAtTime: draft.milestoneDraftPlannedAtTime,
   });
   draft.milestoneDraftTitle = "";
   draft.milestoneDraftPlannedAt = "";
+  draft.milestoneDraftPlannedAtTime = "";
 }
 
 function removeDraftMilestone(index) {
@@ -1217,18 +1248,28 @@ function defaultStartTime() {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 }
 
-// 仅日期输入（YYYY-MM-DD）转为本地当天的 ISO 时间
-function dateOnlyToIso(value) {
-  if (!value) return null;
-  return new Date(`${value}T00:00:00`).toISOString();
+// 日期（YYYY-MM-DD）+ 可选时间（HH:MM）转为存储值：未指定时间时仅存日期。
+function dateTimeToIso(date, time) {
+  if (!date) return null;
+  if (!time) return date;
+  return new Date(`${date}T${time}`).toISOString();
 }
 
-// ISO 时间转为本地日期字符串（YYYY-MM-DD）
-function localIsoToDate(value) {
-  if (!value) return "";
+// 存储值拆分为控件回显的日期与可选时间；仅日期时时间为空。
+function splitIsoForInput(value) {
+  if (!value) return { date: "", time: "" };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return { date: value, time: "" };
   const date = new Date(value);
   const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+  const local = new Date(date.getTime() - offset).toISOString();
+  return { date: local.slice(0, 10), time: local.slice(11, 16) };
+}
+
+// 解析开始执行时间为本地时间戳；仅日期按本地当天零点。
+function parseStartAtTime(value) {
+  if (!value) return NaN;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
+  return new Date(normalized).getTime();
 }
 
 function toggleHistoryActions(taskId) {
@@ -1358,7 +1399,7 @@ async function saveTaskChanges() {
     isUrgent: editDraft.isUrgent,
     startAt:
       !selectedTask.value.is_recurring && editDraft.isFuture && editDraft.startAt
-        ? dateOnlyToIso(editDraft.startAt)
+        ? dateTimeToIso(editDraft.startAt, editDraft.startAtTime)
         : null,
   });
   const updated = await invoke("get_task", {
@@ -1384,6 +1425,7 @@ function openMilestoneForm() {
 function closeMilestoneForm() {
   milestoneDraft.title = "";
   milestoneDraft.plannedAt = "";
+  milestoneDraft.plannedAtTime = "";
   milestoneFormOpen.value = false;
 }
 
@@ -1393,10 +1435,11 @@ async function addMilestone() {
     owner: currentUser.value,
     taskId: selectedTask.value.id,
     title: milestoneDraft.title,
-    plannedAt: dateOnlyToIso(milestoneDraft.plannedAt),
+    plannedAt: dateTimeToIso(milestoneDraft.plannedAt, milestoneDraft.plannedAtTime),
   });
   milestoneDraft.title = "";
   milestoneDraft.plannedAt = "";
+  milestoneDraft.plannedAtTime = "";
   milestoneFormOpen.value = false;
   await reloadTaskDetail();
 }
@@ -1404,7 +1447,9 @@ async function addMilestone() {
 function startMilestoneEdit(milestone) {
   editingMilestoneId.value = milestone.id;
   milestoneEditDraft.title = milestone.title;
-  milestoneEditDraft.plannedAt = localIsoToDate(milestone.planned_at);
+  const parts = splitIsoForInput(milestone.planned_at);
+  milestoneEditDraft.plannedAt = parts.date;
+  milestoneEditDraft.plannedAtTime = parts.time;
 }
 
 function cancelMilestoneEdit() {
@@ -1418,7 +1463,7 @@ async function saveMilestoneEdit(milestone) {
     taskId: selectedTask.value.id,
     milestoneId: milestone.id,
     title: milestoneEditDraft.title,
-    plannedAt: dateOnlyToIso(milestoneEditDraft.plannedAt),
+    plannedAt: dateTimeToIso(milestoneEditDraft.plannedAt, milestoneEditDraft.plannedAtTime),
   });
   editingMilestoneId.value = null;
   await reloadTaskDetail();
@@ -1454,7 +1499,8 @@ async function removeMilestone(milestone) {
 
 function isMilestoneOverdue(plannedAt) {
   if (!plannedAt) return false;
-  return new Date(plannedAt).getTime() < Date.now();
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(plannedAt) ? `${plannedAt}T00:00:00` : plannedAt;
+  return new Date(normalized).getTime() < Date.now();
 }
 
 function nextMilestoneText(task) {
@@ -1626,6 +1672,13 @@ async function openExternal(url) {
 
 function formatDeadline(value) {
   if (!value) return "无截止时间";
+  // 仅日期（未指定具体时间）时只展示日期
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T00:00:00`).toLocaleString("zh-CN", {
+      month: "numeric",
+      day: "numeric",
+    });
+  }
   const date = new Date(value);
   return date.toLocaleString("zh-CN", {
     month: "numeric",
@@ -1659,7 +1712,7 @@ function fallbackTaskStatus(task) {
   if (task.archived_at) return task.completed_at ? "completed" : "uncompleted";
   if (task.completed_at) return "completed";
   if (task.suspended_at) return "suspended";
-  if (task.start_at && new Date(task.start_at).getTime() > Date.now()) return "not_started";
+  if (task.start_at && parseStartAtTime(task.start_at) > Date.now()) return "not_started";
   if (task.started_at || task.start_at) return "in_progress";
   return "pending";
 }

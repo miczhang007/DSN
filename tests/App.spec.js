@@ -195,7 +195,7 @@ describe("桌面便签核心交互", () => {
     expect(invokeMock).toHaveBeenCalledWith("create_task", expect.objectContaining({ owner: "测试用户", title: "整理资料" }));
   });
 
-  it("勾选未来任务后创建任务提交开始执行时间（日期）", async () => {
+  it("勾选未来任务后创建任务提交开始执行时间（未指定时间仅存日期）", async () => {
     localStorage.setItem("current-user", "测试用户");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
@@ -207,11 +207,32 @@ describe("桌面便签核心交互", () => {
     await futureCheckbox.setValue(true);
     await wrapper.vm.$nextTick();
     expect(wrapper.find('input[type="date"]').exists()).toBe(true);
+    expect(wrapper.find('input[type="time"]').exists()).toBe(true);
+    // 仅选择日期，不指定具体时间 → 提交纯日期
     await wrapper.find('input[type="date"]').setValue("2026-09-05");
     await wrapper.findAll("button").find((button) => button.text() === "添加任务").trigger("click");
     expect(invokeMock).toHaveBeenCalledWith("create_task", expect.objectContaining({
       title: "下周启动项目",
-      startAt: new Date("2026-09-05T00:00:00").toISOString(),
+      startAt: "2026-09-05",
+    }));
+  });
+
+  it("未来任务指定具体时间时提交完整时间", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await openAddForUser(wrapper);
+    await wrapper.find('input[maxlength="80"]').setValue("下周启动项目");
+    const futureCheckbox = wrapper
+      .findAll('input[type="checkbox"]')
+      .find((input) => input.element.closest("label").textContent.includes("未来任务"));
+    await futureCheckbox.setValue(true);
+    await wrapper.vm.$nextTick();
+    await wrapper.find('input[type="date"]').setValue("2026-09-05");
+    await wrapper.find('input[type="time"]').setValue("09:30");
+    await wrapper.findAll("button").find((button) => button.text() === "添加任务").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("create_task", expect.objectContaining({
+      startAt: new Date("2026-09-05T09:30").toISOString(),
     }));
   });
 
