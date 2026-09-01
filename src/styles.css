@@ -790,6 +790,27 @@ h1 {
   flex: 1;
 }
 
+.time-toggle {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex: 0 0 auto;
+  color: rgba(64, 51, 27, 0.66);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.time-toggle input {
+  width: auto;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.time-input {
+  max-width: 150px;
+  margin-top: 8px;
+}
+
 .milestone-edit-fields .date-time-inputs {
   margin-top: 6px;
 }

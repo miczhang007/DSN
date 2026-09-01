@@ -207,8 +207,8 @@ describe("桌面便签核心交互", () => {
     await futureCheckbox.setValue(true);
     await wrapper.vm.$nextTick();
     expect(wrapper.find('input[type="date"]').exists()).toBe(true);
-    expect(wrapper.find('input[type="time"]').exists()).toBe(true);
-    // 仅选择日期，不指定具体时间 → 提交纯日期
+    // 默认不指定时间：时间输入不展示
+    expect(wrapper.find('input[type="time"]').exists()).toBe(false);
     await wrapper.find('input[type="date"]').setValue("2026-09-05");
     await wrapper.findAll("button").find((button) => button.text() === "添加任务").trigger("click");
     expect(invokeMock).toHaveBeenCalledWith("create_task", expect.objectContaining({
@@ -217,7 +217,7 @@ describe("桌面便签核心交互", () => {
     }));
   });
 
-  it("未来任务指定具体时间时提交完整时间", async () => {
+  it("未来任务指定具体时间时提交完整时间，取消指定后退回仅日期", async () => {
     localStorage.setItem("current-user", "测试用户");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
@@ -229,10 +229,40 @@ describe("桌面便签核心交互", () => {
     await futureCheckbox.setValue(true);
     await wrapper.vm.$nextTick();
     await wrapper.find('input[type="date"]').setValue("2026-09-05");
+    // 勾选“指定时间”后出现时间输入
+    const specifyCheckbox = wrapper
+      .findAll('input[type="checkbox"]')
+      .find((input) => input.element.closest("label").textContent.includes("指定时间"));
+    await specifyCheckbox.setValue(true);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('input[type="time"]').exists()).toBe(true);
     await wrapper.find('input[type="time"]').setValue("09:30");
     await wrapper.findAll("button").find((button) => button.text() === "添加任务").trigger("click");
     expect(invokeMock).toHaveBeenCalledWith("create_task", expect.objectContaining({
       startAt: new Date("2026-09-05T09:30").toISOString(),
+    }));
+
+    // 再次进入添加页：取消“指定时间”勾选 → 退回仅日期提交
+    await openAddForUser(wrapper);
+    await wrapper.find('input[maxlength="80"]').setValue("下周启动项目");
+    const futureCheckbox2 = wrapper
+      .findAll('input[type="checkbox"]')
+      .find((input) => input.element.closest("label").textContent.includes("未来任务"));
+    await futureCheckbox2.setValue(true);
+    await wrapper.vm.$nextTick();
+    await wrapper.find('input[type="date"]').setValue("2026-09-06");
+    const specifyCheckbox2 = wrapper
+      .findAll('input[type="checkbox"]')
+      .find((input) => input.element.closest("label").textContent.includes("指定时间"));
+    await specifyCheckbox2.setValue(true);
+    await wrapper.vm.$nextTick();
+    await wrapper.find('input[type="time"]').setValue("10:00");
+    await specifyCheckbox2.setValue(false);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('input[type="time"]').exists()).toBe(false);
+    await wrapper.findAll("button").find((button) => button.text() === "添加任务").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("create_task", expect.objectContaining({
+      startAt: "2026-09-06",
     }));
   });
 
