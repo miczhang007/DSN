@@ -17,9 +17,9 @@
 
 ## 版本规则
 
-- 应用版本在 `package.json`、`src-tauri/Cargo.toml` 与 `src-tauri/tauri.conf.json` 中保持一致，例如 `1.4.0`。
-- 市场 MSIX 使用四段版本号，例如应用版本 `1.4.0` 对应清单版本 `1.4.0.0`。
-- 每次应用代码变更完成后，更新 `src/App.vue` 的 `versionLabel`，格式固定为 `v1.4.0 - YYYY-MM-DD HH:mm`。
+- 应用版本在 `package.json`、`src-tauri/Cargo.toml` 与 `src-tauri/tauri.conf.json` 中保持一致，例如 `1.4.1`。
+- 市场 MSIX 使用四段版本号，例如应用版本 `1.4.1` 对应清单版本 `1.4.1.0`。
+- 每次应用代码变更完成后，更新 `src/App.vue` 的 `versionLabel`，格式固定为 `v1.4.1 - YYYY-MM-DD HH:mm`。
 
 ## 生成市场包
 
@@ -35,10 +35,10 @@
 outputs\Desktop-Sticky-Note_<MSIX版本>_x64.msix
 ```
 
-例如 `1.4.0` 的市场包为：
+例如 `1.4.1` 的市场包为：
 
 ```text
-outputs\Desktop-Sticky-Note_1.4.0.0_x64.msix
+outputs\Desktop-Sticky-Note_1.4.1.0_x64.msix
 ```
 
 ## 签名与提交

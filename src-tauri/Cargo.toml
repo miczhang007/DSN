@@ -1,6 +1,6 @@
 [package]
 name = "desktop-sticky-note"
-version = "1.4.0"
+version = "1.4.1"
 description = "Desktop Sticky Note"
 authors = ["miczhang"]
 edition = "2021"
