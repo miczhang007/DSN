@@ -596,7 +596,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.0 - 2026-09-01 13:59";
+const versionLabel = "v1.4.0 - 2026-09-01 14:05";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -1752,7 +1752,7 @@ function fallbackTaskStatus(task) {
   if (task.completed_at) return "completed";
   if (task.suspended_at) return "suspended";
   if (task.start_at && parseStartAtTime(task.start_at) > Date.now()) return "not_started";
-  if (task.started_at || task.start_at) return "in_progress";
+  if (task.started_at || (task.start_at && !task.reactivated_at)) return "in_progress";
   return "pending";
 }
 

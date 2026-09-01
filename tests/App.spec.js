@@ -31,6 +31,7 @@ const taskFixture = {
   suspended_at: null,
   start_at: null,
   started_at: null,
+  reactivated_at: null,
   status: "pending",
 };
 
@@ -329,6 +330,44 @@ describe("桌面便签核心交互", () => {
     expect(invokeMock).toHaveBeenCalledWith("activate_task", { owner: "测试用户", taskId: "t1" });
     await flushApp();
     // 激活后回到待完成，重新出现“进行中”入口
+    expect(wrapper.findAll("button").some((button) => button.text() === "进行中")).toBe(true);
+  });
+
+  it("未来任务到达执行时间自动进行中，挂起激活后变更为待完成", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    const futureTask = { ...taskFixture, id: "t1", title: "未来任务", status: "in_progress", start_at: "2026-08-30T02:00:00Z" };
+    const suspendedTask = { ...futureTask, status: "suspended", suspended_at: "2026-09-01T02:00:00Z" };
+    const pendingTask = { ...futureTask, status: "pending", reactivated_at: "2026-09-01T03:00:00Z", suspended_at: null };
+    invokeMock.activeTasks = [futureTask];
+    invokeMock.mockImplementation(async (command) => {
+      if (command === "list_active_tasks") return invokeMock.activeTasks;
+      if (command === "get_task") return invokeMock.activeTasks[0];
+      if (command === "suspend_task") {
+        invokeMock.activeTasks = [suspendedTask];
+        return null;
+      }
+      if (command === "activate_task") {
+        invokeMock.activeTasks = [pendingTask];
+        return null;
+      }
+      if (command === "get_task_events" || command === "list_milestones") return [];
+      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      return null;
+    });
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".task-main").trigger("click");
+    await wrapper.vm.$nextTick();
+    // 到达执行时间后已自动变为进行中
+    expect(wrapper.find(".detail-meta-row .status-chip").text()).toContain("进行中");
+    await wrapper.findAll("button").find((button) => button.text() === "挂起").trigger("click");
+    await flushApp();
+    await wrapper.findAll("button").find((button) => button.text() === "激活").trigger("click");
+    expect(invokeMock).toHaveBeenCalledWith("activate_task", { owner: "测试用户", taskId: "t1" });
+    await flushApp();
+    // 激活后与其他任务一致：待完成，出现“进行中”入口
+    expect(wrapper.find(".detail-meta-row .status-chip").text()).toContain("待完成");
     expect(wrapper.findAll("button").some((button) => button.text() === "进行中")).toBe(true);
   });
 
