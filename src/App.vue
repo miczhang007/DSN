@@ -453,7 +453,7 @@
                     <span class="milestone-title" :class="{ done: milestone.completed_at }">{{ milestone.title }}</span>
                     <span class="milestone-meta">
                       <span v-if="milestone.planned_at">计划 {{ formatDeadline(milestone.planned_at) }}</span>
-                      <span v-if="milestone.completed_at">完成 {{ formatTime(milestone.completed_at) }}</span>
+                      <span v-if="milestone.completed_at">已完成 {{ formatTime(milestone.completed_at) }}</span>
                       <span v-else-if="isMilestoneOverdue(milestone.planned_at)" class="overdue-chip">已延迟</span>
                     </span>
                     <div v-if="expandedMilestoneId === milestone.id" class="milestone-inline-actions">
@@ -605,7 +605,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.1 - 2026-09-03 11:14";
+const versionLabel = "v1.4.1 - 2026-09-03 11:17";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
