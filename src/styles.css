@@ -693,6 +693,17 @@ h1 {
   align-items: center;
 }
 
+.milestone-move {
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.confirm-datetime {
+  margin-bottom: 0;
+}
+
 .milestone-edit-fields {
   display: grid;
   gap: 6px;

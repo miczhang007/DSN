@@ -464,7 +464,7 @@ describe("桌面便签核心交互", () => {
     expect(wrapper.find('textarea[placeholder*="记录当前进展"]').exists()).toBe(true);
   });
 
-  it("任务详情默认展示已添加节点，编辑入口为任务编辑", async () => {
+  it("任务详情默认展示已添加节点，节点维护可直接进行", async () => {
     localStorage.setItem("current-user", "测试用户");
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [{ ...taskFixture, id: "t1", title: "写周报" }];
@@ -477,17 +477,19 @@ describe("桌面便签核心交互", () => {
     await flushApp();
     await wrapper.find(".task-main").trigger("click");
     await wrapper.vm.$nextTick();
-    // 未展开任务编辑时，节点行已默认展示
+    // 节点行默认展示；无需展开任务编辑即可维护节点
     expect(wrapper.find(".milestone-section").exists()).toBe(true);
     expect(wrapper.find(".milestone-section").text()).toContain("完成初稿");
-    // 节点维护（添加节点）仅在任务编辑展开后出现
-    expect(wrapper.find(".milestone-form").exists()).toBe(false);
-    await wrapper.findAll("button").find((button) => button.text() === "任务编辑").trigger("click");
-    await wrapper.vm.$nextTick();
     expect(wrapper.findAll("button").some((button) => button.text() === "添加节点")).toBe(true);
+    expect(wrapper.findAll("button").some((button) => button.text() === "删除")).toBe(true);
+    expect(wrapper.find(".milestone-form").exists()).toBe(false);
+    // 直接在详情页添加节点
+    await wrapper.findAll("button").find((button) => button.text() === "添加节点").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find("form.milestone-form").exists()).toBe(true);
   });
 
-  it("任务详情支持编辑、进度和节点维护", async () => {
+  it("任务详情支持编辑、节点维护与进度（带记录时间）", async () => {
     invokeMock.activeTasks = [taskFixture];
     localStorage.setItem("current-user", "测试用户");
     const wrapper = mountApp();
@@ -500,19 +502,86 @@ describe("桌面便签核心交互", () => {
     await wrapper.find('.detail-actions input[maxlength="80"]').setValue("整理资料（已更新）");
     await wrapper.findAll("button").find((button) => button.text() === "保存变更").trigger("click");
     expect(invokeMock).toHaveBeenCalledWith("update_task", expect.objectContaining({ title: "整理资料（已更新）" }));
-    // 保存后收起编辑；再次展开维护节点
-    await wrapper.findAll("button").find((button) => button.text() === "任务编辑").trigger("click");
-    await wrapper.vm.$nextTick();
+    // 节点维护无需展开任务编辑：直接在详情页添加节点
     await wrapper.findAll("button").find((button) => button.text() === "添加节点").trigger("click");
     await wrapper.find('input[placeholder="节点名称"]').setValue("完成初稿");
     await wrapper.find("form.milestone-form").trigger("submit");
     expect(invokeMock).toHaveBeenCalledWith("add_milestone", expect.objectContaining({ title: "完成初稿" }));
-    // 点击添加进度展开后记录进度
+    // 点击添加进度展开后记录进度（默认带当前时间）
     await wrapper.findAll("button").find((button) => button.text() === "添加进度").trigger("click");
     await wrapper.vm.$nextTick();
     await wrapper.find('textarea[placeholder*="记录当前进展"]').setValue("已完成资料分类");
     await wrapper.find(".progress-submit").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("add_task_progress", expect.objectContaining({ progress: "已完成资料分类" }));
+    expect(invokeMock).toHaveBeenCalledWith("add_task_progress", expect.objectContaining({ progress: "已完成资料分类", recordedAt: expect.any(String) }));
+  });
+
+  it("详情页完成任务可选择完成时间", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    const task = { ...taskFixture, id: "t1", title: "写周报", status: "pending" };
+    invokeMock.activeTasks = [task];
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === "list_active_tasks") return invokeMock.activeTasks;
+      if (command === "get_task") return invokeMock.activeTasks[0];
+      if (command === "complete_task") {
+        invokeMock.activeTasks = [{ ...task, status: "completed", completed_at: args.completedAt }];
+        return null;
+      }
+      if (command === "get_task_events" || command === "list_milestones") return [];
+      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      return null;
+    });
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".task-main").trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper.findAll("button").find((button) => button.text() === "已完成").trigger("click");
+    await wrapper.vm.$nextTick();
+    // 完成弹窗包含完成时间输入
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    const dialogInputs = [...document.querySelectorAll(".confirm-dialog input[type='date'], .confirm-dialog input[type='time']")];
+    expect(dialogInputs.length).toBeGreaterThan(0);
+    // 修改完成时间为过去时间并确认
+    const dateInput = document.querySelector(".confirm-dialog input[type='date']");
+    dateInput.value = "2026-08-30";
+    dateInput.dispatchEvent(new Event("input", { bubbles: true }));
+    const timeInput = document.querySelector(".confirm-dialog input[type='time']");
+    timeInput.value = "18:30";
+    timeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await wrapper.vm.$nextTick();
+    const confirmBtn = [...document.querySelectorAll(".confirm-actions button")].find((b) => b.textContent === "确认完成");
+    confirmBtn.click();
+    await flushApp();
+    expect(invokeMock).toHaveBeenCalledWith("complete_task", expect.objectContaining({ taskId: "t1", completedAt: new Date("2026-08-30T18:30").toISOString() }));
+  });
+
+  it("节点支持上移/下移排序并持久化", async () => {
+    localStorage.setItem("current-user", "测试用户");
+    const milestones = [
+      { id: 1, task_id: "t1", title: "节点A", planned_at: null, completed_at: null, created_at: "2026-08-24T08:00:00Z", updated_at: "2026-08-24T08:00:00Z" },
+      { id: 2, task_id: "t1", title: "节点B", planned_at: null, completed_at: null, created_at: "2026-08-24T08:00:00Z", updated_at: "2026-08-24T08:00:00Z" },
+    ];
+    invokeMock.mockImplementation(async (command) => {
+      if (command === "list_active_tasks") return [{ ...taskFixture, id: "t1", title: "写周报" }];
+      if (command === "get_task_events") return [];
+      if (command === "list_milestones") return milestones;
+      return null;
+    });
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".task-main").trigger("click");
+    await wrapper.vm.$nextTick();
+    // 第二行节点“下移”不可用，第一行“上移”不可用
+    const firstRow = wrapper.findAll(".milestone-row")[0];
+    const secondRow = wrapper.findAll(".milestone-row")[1];
+    expect(firstRow.find('button[aria-label^="上移"]').exists()).toBe(false);
+    expect(firstRow.find('button[aria-label^="下移"]').exists()).toBe(true);
+    expect(secondRow.find('button[aria-label^="下移"]').exists()).toBe(false);
+    // 点击第二行上移 → 顺序交换并持久化
+    await secondRow.find('button[aria-label^="上移"]').trigger("click");
+    await flushApp();
+    expect(invokeMock).toHaveBeenCalledWith("reorder_milestones", expect.objectContaining({ taskId: "t1", orderedIds: [2, 1] }));
   });
 
   it("周期规则创建、编辑、作废操作调用对应接口", async () => {

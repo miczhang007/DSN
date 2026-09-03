@@ -381,7 +381,7 @@
             <button v-if="taskStatus(selectedTask) === 'pending' || taskStatus(selectedTask) === 'in_progress'" class="text-button" type="button" @click="detailAction('suspend')">挂起</button>
             <button v-if="taskStatus(selectedTask) === 'suspended'" class="text-button" type="button" @click="detailAction('activate')">激活</button>
             <button v-if="taskStatus(selectedTask) === 'pending'" class="text-button" type="button" @click="detailAction('start')">进行中</button>
-            <button v-if="!selectedTask.completed_at" class="text-button" type="button" @click="detailAction('complete')">已完成</button>
+            <button v-if="!selectedTask.completed_at" class="text-button" type="button" @click="openCompleteDialog(selectedTask.id)">已完成</button>
             <button v-if="taskStatus(selectedTask) === 'completed'" class="text-button" type="button" @click="detailAction('undo_complete')">撤销完成</button>
             <button class="text-button" type="button" @click="detailAction('archive')">归档</button>
             <button class="text-button" type="button" @click="toggleDetailEdit">{{ detailEditOpen ? '收起编辑' : '任务编辑' }}</button>
@@ -421,13 +421,13 @@
             <h2>节点</h2>
             <div v-if="milestones.length" class="milestone-list">
               <div
-                v-for="milestone in milestones"
+                v-for="(milestone, index) in milestones"
                 :key="milestone.id"
                 class="milestone-row"
-                :class="{ editing: editingMilestoneId === milestone.id, 'has-check': !detailEditOpen && !milestone.completed_at }"
+                :class="{ editing: editingMilestoneId === milestone.id, 'has-check': editingMilestoneId !== milestone.id && !milestone.completed_at }"
               >
                 <button
-                  v-if="!detailEditOpen && !milestone.completed_at"
+                  v-if="editingMilestoneId !== milestone.id && !milestone.completed_at"
                   class="milestone-check"
                   type="button"
                   :aria-label="`完成节点 ${milestone.title}`"
@@ -463,7 +463,21 @@
                       <span v-else-if="isMilestoneOverdue(milestone.planned_at)" class="overdue-chip">已延迟</span>
                     </span>
                   </div>
-                  <div v-if="detailEditOpen" class="milestone-actions">
+                  <div class="milestone-actions">
+                    <button
+                      v-if="index > 0"
+                      class="icon-button milestone-move"
+                      type="button"
+                      :aria-label="`上移节点 ${milestone.title}`"
+                      @click="moveMilestone(index, -1)"
+                    >↑</button>
+                    <button
+                      v-if="index < milestones.length - 1"
+                      class="icon-button milestone-move"
+                      type="button"
+                      :aria-label="`下移节点 ${milestone.title}`"
+                      @click="moveMilestone(index, 1)"
+                    >↓</button>
                     <button v-if="!milestone.completed_at" class="text-button" type="button" @click="startMilestoneEdit(milestone)">
                       编辑
                     </button>
@@ -476,14 +490,14 @@
             </div>
             <p v-else class="section-empty">暂无节点</p>
             <button
-              v-if="detailEditOpen && !milestoneFormOpen"
+              v-if="!milestoneFormOpen"
               class="text-button"
               type="button"
               @click="openMilestoneForm"
             >
               添加节点
             </button>
-            <form v-if="detailEditOpen && milestoneFormOpen" class="milestone-form" @submit.prevent="addMilestone">
+            <form v-if="milestoneFormOpen" class="milestone-form" @submit.prevent="addMilestone">
               <input v-model.trim="milestoneDraft.title" type="text" maxlength="40" placeholder="节点名称" />
               <span class="date-time-inputs">
                 <input
@@ -511,6 +525,13 @@
                 maxlength="240"
                 placeholder="记录当前进展、阻碍或下一步安排"
               ></textarea>
+            </label>
+            <label class="field compact">
+              <span>记录时间</span>
+              <span class="date-time-inputs">
+                <input v-model="progressDate" type="date" />
+                <input v-model="progressTime" type="time" />
+              </span>
             </label>
             <button class="text-button progress-submit" type="button" :disabled="!progressDraft" @click="saveTaskProgress">添加进度</button>
           </div>
@@ -559,6 +580,13 @@
           <input v-model="confirmation.isCompleted" type="checkbox" />
           <span>任务已完成</span>
         </label>
+        <label v-if="confirmation.kind === 'complete'" class="field compact confirm-datetime">
+          <span>完成时间</span>
+          <span class="date-time-inputs">
+            <input v-model="confirmation.state.completedDate" type="date" />
+            <input v-model="confirmation.state.completedTime" type="time" />
+          </span>
+        </label>
         <div class="confirm-actions">
           <button class="text-button" type="button" @click="closeConfirmation">取消</button>
           <template v-if="confirmation.choices && confirmation.choices.length">
@@ -596,7 +624,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.1 - 2026-09-01 14:10";
+const versionLabel = "v1.4.1 - 2026-09-03 10:01";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -675,6 +703,8 @@ const recurringDraft = reactive({ title: "", isUrgent: false, dateRangeType: "lo
 const editDraft = reactive({ title: "", isUrgent: false, isFuture: false, startAt: "", startAtTime: "", startAtTimeSpecified: false });
 const milestoneFormOpen = ref(false);
 const progressDraft = ref("");
+const progressDate = ref("");
+const progressTime = ref("");
 const confirmation = ref(null);
 const notice = ref(null);
 const expandedHistoryTaskId = ref("");
@@ -967,6 +997,9 @@ async function openTask(task) {
   detailEditOpen.value = false;
   progressFormOpen.value = false;
   progressDraft.value = "";
+  const nowLocal = nowLocalParts();
+  progressDate.value = nowLocal.date;
+  progressTime.value = nowLocal.time;
   taskEvents.value = await invoke("get_task_events", {
     owner: currentUser.value,
     taskId: task.id,
@@ -1291,6 +1324,14 @@ function currentTimeValue() {
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
+// 当前本地时间拆分为日期与时间（用于预填完成时间/记录时间）。
+function nowLocalParts() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60000;
+  const local = new Date(now.getTime() - offset).toISOString();
+  return { date: local.slice(0, 10), time: local.slice(11, 16) };
+}
+
 // 存储值拆分为控件回显的日期与可选时间；仅日期时时间为空。
 function splitIsoForInput(value) {
   if (!value) return { date: "", time: "" };
@@ -1353,7 +1394,7 @@ async function detailAction(action) {
     } else if (action === "start") {
       await invoke("start_task", { owner: currentUser.value, taskId });
     } else if (action === "complete") {
-      await invoke("complete_task", { owner: currentUser.value, taskId });
+      await invoke("complete_task", { owner: currentUser.value, taskId, completedAt: null });
     } else if (action === "undo_complete") {
       await invoke("undo_complete_task", { owner: currentUser.value, taskId });
     } else if (action === "archive") {
@@ -1372,6 +1413,56 @@ async function detailAction(action) {
     await refreshActiveTasks();
   } catch (err) {
     showNotice(err, "任务操作失败");
+  }
+}
+
+// 详情页“已完成”：弹窗可选择完成时间（默认当前时间）。
+function openCompleteDialog(taskId) {
+  const nowParts = nowLocalParts();
+  const state = reactive({ completedDate: nowParts.date, completedTime: nowParts.time });
+  confirmation.value = {
+    title: "完成任务",
+    message: "可调整完成时间（默认当前时间）。",
+    titleId: "confirm-dialog-title",
+    kind: "complete",
+    state,
+    actionLabel: "确认完成",
+    action: async () => {
+      await detailComplete(taskId, dateTimeToIso(state.completedDate, state.completedTime));
+    },
+  };
+}
+
+async function detailComplete(taskId, completedAt) {
+  try {
+    await invoke("complete_task", { owner: currentUser.value, taskId, completedAt });
+    const updated = await invoke("get_task", {
+      owner: currentUser.value,
+      taskId,
+    });
+    await openTask(updated);
+    await refreshActiveTasks();
+  } catch (err) {
+    showNotice(err, "任务操作失败");
+  }
+}
+
+async function moveMilestone(index, direction) {
+  const target = index + direction;
+  if (target < 0 || target >= milestones.value.length) return;
+  const list = [...milestones.value];
+  const [moved] = list.splice(index, 1);
+  list.splice(target, 0, moved);
+  milestones.value = list;
+  try {
+    await invoke("reorder_milestones", {
+      owner: currentUser.value,
+      taskId: selectedTask.value.id,
+      orderedIds: list.map((milestone) => milestone.id),
+    });
+  } catch (err) {
+    showNotice(err, "保存节点排序失败");
+    await reloadTaskDetail();
   }
 }
 
@@ -1556,6 +1647,7 @@ async function saveTaskProgress() {
     owner: currentUser.value,
     taskId: selectedTask.value.id,
     progress: progressDraft.value,
+    recordedAt: dateTimeToIso(progressDate.value, progressTime.value),
   });
   const updated = await invoke("get_task", {
     owner: currentUser.value,

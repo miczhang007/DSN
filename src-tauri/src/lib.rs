@@ -134,6 +134,7 @@ pub fn run() {
             complete_milestone,
             undo_complete_milestone,
             delete_milestone,
+            reorder_milestones,
             rename_user_data,
             delete_user_data,
             create_recurring_task_setting,
@@ -307,6 +308,8 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch("ALTER TABLE tasks ADD COLUMN started_at TEXT;")
         .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
     conn.execute_batch("ALTER TABLE tasks ADD COLUMN reactivated_at TEXT;")
+        .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
+    conn.execute_batch("ALTER TABLE task_milestones ADD COLUMN sort_order INTEGER;")
         .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
     conn.execute_batch("ALTER TABLE recurring_task_settings ADD COLUMN repeat_count INTEGER NOT NULL DEFAULT 1;")
         .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
@@ -628,6 +631,7 @@ fn add_task_progress(
     owner: String,
     task_id: String,
     progress: String,
+    recorded_at: Option<String>,
 ) -> Result<(), String> {
     let owner = normalize_owner(&owner)?;
     let progress = progress.trim();
@@ -643,7 +647,17 @@ fn add_task_progress(
     if task.archived_at.is_some() {
         return Err("已归档任务不能维护进度".to_string());
     }
-    insert_event(&conn, &task_id, "progress_updated", None, Some(progress))
+    // 支持自定义记录时间；未指定时使用当前时间。
+    let event_time = recorded_at.unwrap_or_else(now_string);
+    conn.execute(
+        "
+        INSERT INTO task_events (task_id, event_type, before_value, after_value, created_at)
+        VALUES (?1, 'progress_updated', NULL, ?2, ?3)
+        ",
+        params![task_id, progress, event_time],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -672,17 +686,24 @@ fn delete_task_progress(
 }
 
 #[tauri::command]
-fn complete_task(state: State<DbState>, owner: String, task_id: String) -> Result<(), String> {
+fn complete_task(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+    completed_at: Option<String>,
+) -> Result<(), String> {
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
     let owner = normalize_owner(&owner)?;
     let task = query_task(&conn, &owner, &task_id)?;
+    let now = now_string();
+    // 支持自定义完成时间；未指定时使用当前时间。
+    let completed = completed_at.unwrap_or_else(|| now.clone());
     if task.archived_at.is_some() {
         // 已归档任务：仅周期任务支持从历史列表补记完成。
         if task.is_recurring && task.completed_at.is_none() {
-            let now = now_string();
             conn.execute(
-                "UPDATE tasks SET completed_at=?1, updated_at=?1 WHERE id=?2 AND owner=?3",
-                params![now, task_id, owner],
+                "UPDATE tasks SET completed_at=?1, updated_at=?2 WHERE id=?3 AND owner=?4",
+                params![completed, now, task_id, owner],
             ).map_err(|err| err.to_string())?;
             insert_event(&conn, &task_id, "completed", None, None)?;
         }
@@ -692,14 +713,13 @@ fn complete_task(state: State<DbState>, owner: String, task_id: String) -> Resul
         return Ok(());
     }
     // 完成后保留在当前任务列表（划线展示），由手工归档或系统隔天自动归档移入历史。
-    let now = now_string();
     conn.execute(
         "
         UPDATE tasks
-        SET completed_at = ?1, updated_at = ?1
-        WHERE id = ?2 AND owner = ?3
+        SET completed_at = ?1, updated_at = ?2
+        WHERE id = ?3 AND owner = ?4
         ",
-        params![now, task_id, owner],
+        params![completed, now, task_id, owner],
     )
     .map_err(|err| err.to_string())?;
     insert_event(&conn, &task_id, "completed", None, None)?;
@@ -1086,7 +1106,8 @@ fn list_milestones(
             SELECT id, task_id, title, planned_at, completed_at, created_at, updated_at
             FROM task_milestones
             WHERE task_id = ?1
-            ORDER BY CASE WHEN planned_at IS NULL THEN 1 ELSE 0 END, planned_at ASC, id ASC
+            ORDER BY sort_order IS NULL ASC, sort_order ASC,
+              CASE WHEN planned_at IS NULL THEN 1 ELSE 0 END, planned_at ASC, id ASC
             ",
         )
         .map_err(|err| err.to_string())?;
@@ -1300,6 +1321,35 @@ fn delete_milestone(
         Some(&milestone.title),
         None,
     )?;
+    Ok(())
+}
+
+#[tauri::command]
+fn reorder_milestones(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+    ordered_ids: Vec<i64>,
+) -> Result<(), String> {
+    let owner = normalize_owner(&owner)?;
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    let task = query_task(&conn, &owner, &task_id)?;
+    if task.is_recurring { return Err("周期任务不支持节点".to_string()); }
+    if task.archived_at.is_some() {
+        return Err("已归档任务不能调整节点顺序".to_string());
+    }
+    let now = now_string();
+    for (index, milestone_id) in ordered_ids.iter().enumerate() {
+        conn.execute(
+            "
+            UPDATE task_milestones
+            SET sort_order = ?1, updated_at = ?2
+            WHERE id = ?3 AND task_id = ?4
+            ",
+            params![index as i64, now, milestone_id, task_id],
+        )
+        .map_err(|err| err.to_string())?;
+    }
     Ok(())
 }
 
