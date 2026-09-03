@@ -116,9 +116,10 @@
               @mousedown.prevent="startRowDrag($event, index)"
               @click.stop="handleTaskMainClick(task)"
             >
-              <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">{{ task.title }}</span>
+              <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">
+                <span v-if="taskStatus(task) === 'in_progress'" class="in-progress-dot" aria-hidden="true"></span>{{ task.title }}
+              </span>
               <span class="task-meta">
-                <span class="status-chip" :class="`status-${taskStatus(task)}`">{{ taskStatusText(task) }}</span>
                 <span v-if="task.is_recurring" class="status-chip status-recurring">周期任务</span>
                 <span v-if="task.next_milestone_title || task.next_milestone_planned_at" class="next-milestone">
                   {{ nextMilestoneText(task) }}
@@ -408,23 +409,26 @@
               <button class="text-button" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">保存变更</button>
             </div>
           </div>
-          <div v-if="!selectedTask.is_recurring && !detailEditOpen" class="detail-section milestone-section">
+          <div v-if="!selectedTask.is_recurring && !detailEditOpen && !progressFormOpen" class="detail-section milestone-section">
             <h2>节点</h2>
             <div v-if="milestones.length" ref="milestoneListEl" class="milestone-list">
               <div
                 v-for="(milestone, index) in milestones"
                 :key="milestone.id"
                 class="milestone-row"
-                :class="{ editing: editingMilestoneId === milestone.id, dragging: milestoneDragging && milestoneDragIndex === index, 'has-check': editingMilestoneId !== milestone.id && !milestone.completed_at }"
+                :class="{ editing: editingMilestoneId === milestone.id, dragging: milestoneDragging && milestoneDragIndex === index, 'has-check': editingMilestoneId !== milestone.id }"
               >
-                <button
-                  v-if="editingMilestoneId !== milestone.id && !milestone.completed_at"
-                  class="milestone-check"
-                  type="button"
-                  :aria-label="`完成节点 ${milestone.title}`"
-                  @mousedown.stop.prevent
-                  @click.stop="completeMilestone(milestone)"
-                ></button>
+                <template v-if="editingMilestoneId !== milestone.id">
+                  <button
+                    v-if="!milestone.completed_at"
+                    class="milestone-check"
+                    type="button"
+                    :aria-label="`完成节点 ${milestone.title}`"
+                    @mousedown.stop.prevent
+                    @click.stop="openNodeCompleteDialog(milestone)"
+                  ></button>
+                  <span v-else class="milestone-check done" aria-hidden="true"></span>
+                </template>
                 <template v-if="editingMilestoneId === milestone.id">
                   <div class="milestone-edit-fields">
                     <input v-model.trim="milestoneEditDraft.title" type="text" maxlength="40" placeholder="节点名称" />
@@ -603,7 +607,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.1 - 2026-09-03 10:31";
+const versionLabel = "v1.4.1 - 2026-09-03 10:44";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -977,9 +981,9 @@ async function openTask(task) {
   editingMilestoneId.value = null;
   milestoneFormOpen.value = false;
   progressDraft.value = "";
-  const nowLocal = nowLocalParts();
-  progressDate.value = nowLocal.date;
-  progressTime.value = nowLocal.time;
+  // 记录时间默认不指定：日期为今天，具体时间留空（按当前时刻记录）。
+  progressDate.value = localDateInputValue();
+  progressTime.value = "";
   taskEvents.value = await invoke("get_task_events", {
     owner: currentUser.value,
     taskId: task.id,
@@ -1352,21 +1356,26 @@ async function detailAction(action) {
   }
 }
 
-// 列表画圈与详情页“已完成”：弹窗可选择完成时间（默认当前时间）。
+// 列表画圈、详情页“已完成”与节点完成：弹窗选择完成时间（时间默认为不指定，不指定时按当前时刻记录）。
 function openCompleteDialog(taskId) {
-  const nowParts = nowLocalParts();
-  const state = reactive({ completedDate: nowParts.date, completedTime: nowParts.time });
+  const today = nowLocalParts().date;
+  const state = reactive({ completedDate: today, completedTime: "" });
   confirmation.value = {
     title: "完成任务",
-    message: "可调整完成时间（默认当前时间）。",
+    message: "可调整完成时间；不指定具体时间时按当前时刻记录。",
     titleId: "confirm-dialog-title",
     kind: "complete",
     state,
     actionLabel: "确认完成",
     action: async () => {
-      await performComplete(taskId, dateTimeToIso(state.completedDate, state.completedTime));
+      await performComplete(taskId, resolveRecordedAt(state.completedDate, state.completedTime));
     },
   };
+}
+
+// 完成/进度记录时间：未指定具体时间时返回 null（由后端按当前时刻记录）。
+function resolveRecordedAt(date, time) {
+  return time ? dateTimeToIso(date, time) : null;
 }
 
 async function performComplete(taskId, completedAt) {
@@ -1382,6 +1391,37 @@ async function performComplete(taskId, completedAt) {
     }
   } catch (err) {
     showNotice(err, "任务操作失败");
+  }
+}
+
+function openNodeCompleteDialog(milestone) {
+  if (!selectedTask.value || milestone.completed_at) return;
+  const today = nowLocalParts().date;
+  const state = reactive({ completedDate: today, completedTime: "" });
+  confirmation.value = {
+    title: "完成节点",
+    message: "可调整完成时间；不指定具体时间时按当前时刻记录。",
+    titleId: "confirm-dialog-title",
+    kind: "complete",
+    state,
+    actionLabel: "确认完成",
+    action: async () => {
+      await performNodeComplete(milestone.id, resolveRecordedAt(state.completedDate, state.completedTime));
+    },
+  };
+}
+
+async function performNodeComplete(milestoneId, completedAt) {
+  try {
+    await invoke("complete_milestone", {
+      owner: currentUser.value,
+      taskId: selectedTask.value.id,
+      milestoneId,
+      completedAt,
+    });
+    await reloadTaskDetail();
+  } catch (err) {
+    showNotice(err, "节点操作失败");
   }
 }
 
@@ -1593,16 +1633,6 @@ async function saveMilestoneEdit(milestone) {
   await reloadTaskDetail();
 }
 
-async function completeMilestone(milestone) {
-  if (!selectedTask.value || milestone.completed_at) return;
-  await invoke("complete_milestone", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-    milestoneId: milestone.id,
-  });
-  await reloadTaskDetail();
-}
-
 async function undoCompleteMilestone(milestone) {
   if (!selectedTask.value) return;
   await invoke("undo_complete_milestone", {
@@ -1652,7 +1682,7 @@ async function saveTaskProgress() {
     owner: currentUser.value,
     taskId: selectedTask.value.id,
     progress: progressDraft.value,
-    recordedAt: dateTimeToIso(progressDate.value, progressTime.value),
+    recordedAt: resolveRecordedAt(progressDate.value, progressTime.value),
   });
   const updated = await invoke("get_task", {
     owner: currentUser.value,

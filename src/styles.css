@@ -479,6 +479,16 @@ h1 {
   text-decoration: line-through;
 }
 
+.in-progress-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  background: rgba(63, 146, 85, 0.85);
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+
 .complete-button {
   width: 17px;
   height: 17px;
@@ -663,6 +673,12 @@ h1 {
 
 .milestone-check:hover {
   background: rgba(255, 255, 255, 0.38);
+}
+
+.milestone-check.done {
+  display: inline-block;
+  border-color: rgba(83, 112, 55, 0.65);
+  background: rgba(83, 112, 55, 0.4);
 }
 
 .milestone-main {

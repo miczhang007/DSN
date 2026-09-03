@@ -253,7 +253,7 @@ describe("桌面便签核心交互", () => {
     }));
   });
 
-  it("任务列表展示细分状态标签（周期任务同时展示周期任务标签）", async () => {
+  it("任务列表不展示状态标签，进行中任务标题前展示绿点，周期任务保留标签", async () => {
     localStorage.setItem("current-user", "测试用户");
     invokeMock.activeTasks = [
       { ...taskFixture, id: "t1", title: "任务A", status: "pending" },
@@ -266,11 +266,11 @@ describe("桌面便签核心交互", () => {
     await wrapper.vm.$nextTick();
     await flushApp();
     const chips = wrapper.findAll(".status-chip").map((chip) => chip.text());
-    expect(chips).toContain("待完成");
-    expect(chips).toContain("未开始");
-    expect(chips).toContain("已挂起");
-    expect(chips).toContain("进行中");
-    expect(chips).toContain("周期任务");
+    expect(chips).toEqual(["周期任务"]);
+    const rows = wrapper.findAll(".task-row");
+    expect(rows[4].find(".in-progress-dot").exists()).toBe(true);
+    expect(rows[0].find(".in-progress-dot").exists()).toBe(false);
+    expect(rows[1].find(".in-progress-dot").exists()).toBe(false);
   });
 
   it("详情页支持待完成开始执行、挂起与激活", async () => {
@@ -372,16 +372,16 @@ describe("桌面便签核心交互", () => {
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
     await flushApp();
-    // 画圈完成主操作：弹出完成时间确认
+    // 画圈完成主操作：弹出完成时间确认（时间默认为不指定 → completedAt 为 null，由后端按当前时刻记录）
     await wrapper.find(".complete-button").trigger("click");
     await wrapper.vm.$nextTick();
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
     const confirmBtn = [...document.querySelectorAll(".confirm-actions button")].find((b) => b.textContent === "确认完成");
     confirmBtn.click();
     await flushApp();
-    expect(invokeMock).toHaveBeenCalledWith("complete_task", expect.objectContaining({ taskId: "t1", completedAt: expect.any(String) }));
+    expect(invokeMock).toHaveBeenCalledWith("complete_task", expect.objectContaining({ taskId: "t1", completedAt: null }));
     expect(wrapper.find(".task-title.done").exists()).toBe(true);
-    expect(wrapper.find(".task-list").text()).toContain("已完成");
+    expect(wrapper.find(".complete-button.done").exists()).toBe(true);
   });
 
   it("详情页已完成任务支持撤销完成与直接归档", async () => {
@@ -514,7 +514,8 @@ describe("桌面便签核心交互", () => {
     await wrapper.vm.$nextTick();
     await wrapper.find('textarea[placeholder*="记录当前进展"]').setValue("已完成资料分类");
     await wrapper.find(".progress-submit").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("add_task_progress", expect.objectContaining({ progress: "已完成资料分类", recordedAt: expect.any(String) }));
+    // 记录时间默认不指定（具体时间为空 → recordedAt 为 null，由后端按当前时刻记录）
+    expect(invokeMock).toHaveBeenCalledWith("add_task_progress", expect.objectContaining({ progress: "已完成资料分类", recordedAt: null }));
   });
 
   it("详情页完成任务可选择完成时间", async () => {

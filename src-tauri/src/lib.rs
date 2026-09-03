@@ -1225,6 +1225,7 @@ fn complete_milestone(
     owner: String,
     task_id: String,
     milestone_id: i64,
+    completed_at: Option<String>,
 ) -> Result<(), String> {
     let owner = normalize_owner(&owner)?;
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
@@ -1235,13 +1236,15 @@ fn complete_milestone(
         return Ok(());
     }
     let now = now_string();
+    // 支持自定义完成时间；未指定时使用当前时间。
+    let completed = completed_at.unwrap_or_else(|| now.clone());
     conn.execute(
         "
         UPDATE task_milestones
-        SET completed_at = ?1, updated_at = ?1
-        WHERE id = ?2 AND task_id = ?3
+        SET completed_at = ?1, updated_at = ?2
+        WHERE id = ?3 AND task_id = ?4
         ",
-        params![now, milestone_id, task_id],
+        params![completed, now, milestone_id, task_id],
     )
     .map_err(|err| err.to_string())?;
     let progress_text = format!("完成节点：{}", milestone.title);
