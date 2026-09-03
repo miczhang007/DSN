@@ -232,7 +232,6 @@
               <input v-model="draft.startAtTime" type="time" />
             </span>
           </label>
-          <p class="form-hint">已自动添加“任务开始执行”节点。不指定具体时间时仅按日期执行并只展示日期；到达开始执行时间前任务显示为“未开始”。</p>
         </template>
         <template v-if="draft.isRecurring">
           <label class="field compact"><span>时间范围</span><select v-model="draft.dateRangeType"><option value="long">长期</option><option value="range">指定日期</option></select></label>
@@ -242,7 +241,6 @@
           <div v-if="draft.frequencyType === 'daily'" class="weekday-picker"><label v-for="day in weekdayOptions" :key="day.value"><input v-model="draft.weekdays" type="checkbox" :value="day.value" />{{ day.label }}</label></div>
           <label v-if="draft.frequencyType !== 'daily'" class="field compact"><span>重复次数</span><input v-model.number="draft.repeatCount" type="number" min="1" max="31" /></label>
           <label class="field compact"><span>任务生成时间</span><input v-model="draft.generateTime" type="time" /></label>
-          <p class="form-hint">周期任务会在符合规则的当天自动生成，任务名称将附带日期。</p>
         </template>
 
         <div v-if="!draft.isRecurring" class="milestone-editor">
@@ -558,7 +556,7 @@
     <div v-if="confirmation" class="confirm-backdrop" @click.self="closeConfirmation">
       <section class="confirm-dialog" role="alertdialog" aria-modal="true" :aria-labelledby="confirmation.titleId">
         <h2 v-if="confirmation.kind !== 'archive'" :id="confirmation.titleId">{{ confirmation.title }}</h2>
-        <p v-if="confirmation.kind !== 'archive'">{{ confirmation.message }}</p>
+        <p v-if="confirmation.kind !== 'archive' && confirmation.message">{{ confirmation.message }}</p>
         <label v-if="confirmation.kind === 'archive'" class="check-field confirm-check">
           <input v-model="confirmation.isCompleted" type="checkbox" />
           <span>任务已完成</span>
@@ -607,7 +605,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.1 - 2026-09-03 10:44";
+const versionLabel = "v1.4.1 - 2026-09-03 11:04";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -981,13 +979,14 @@ async function openTask(task) {
   editingMilestoneId.value = null;
   milestoneFormOpen.value = false;
   progressDraft.value = "";
-  // 记录时间默认不指定：日期为今天，具体时间留空（按当前时刻记录）。
+  // 记录时间默认不指定：日期为今天，具体时间留空（未指定时仅按日期记录）。
   progressDate.value = localDateInputValue();
   progressTime.value = "";
   taskEvents.value = await invoke("get_task_events", {
     owner: currentUser.value,
     taskId: task.id,
   });
+  taskEvents.value = [...taskEvents.value].sort(compareEventTime);
   milestones.value = task.is_recurring
     ? []
     : await invoke("list_milestones", {
@@ -1356,26 +1355,20 @@ async function detailAction(action) {
   }
 }
 
-// 列表画圈、详情页“已完成”与节点完成：弹窗选择完成时间（时间默认为不指定，不指定时按当前时刻记录）。
+// 列表画圈、详情页“已完成”与节点完成：弹窗选择完成时间（时间默认为不指定，未指定时仅按日期记录）。
 function openCompleteDialog(taskId) {
   const today = nowLocalParts().date;
   const state = reactive({ completedDate: today, completedTime: "" });
   confirmation.value = {
     title: "完成任务",
-    message: "可调整完成时间；不指定具体时间时按当前时刻记录。",
     titleId: "confirm-dialog-title",
     kind: "complete",
     state,
     actionLabel: "确认完成",
     action: async () => {
-      await performComplete(taskId, resolveRecordedAt(state.completedDate, state.completedTime));
+      await performComplete(taskId, dateTimeToIso(state.completedDate, state.completedTime));
     },
   };
-}
-
-// 完成/进度记录时间：未指定具体时间时返回 null（由后端按当前时刻记录）。
-function resolveRecordedAt(date, time) {
-  return time ? dateTimeToIso(date, time) : null;
 }
 
 async function performComplete(taskId, completedAt) {
@@ -1400,13 +1393,12 @@ function openNodeCompleteDialog(milestone) {
   const state = reactive({ completedDate: today, completedTime: "" });
   confirmation.value = {
     title: "完成节点",
-    message: "可调整完成时间；不指定具体时间时按当前时刻记录。",
     titleId: "confirm-dialog-title",
     kind: "complete",
     state,
     actionLabel: "确认完成",
     action: async () => {
-      await performNodeComplete(milestone.id, resolveRecordedAt(state.completedDate, state.completedTime));
+      await performNodeComplete(milestone.id, dateTimeToIso(state.completedDate, state.completedTime));
     },
   };
 }
@@ -1682,7 +1674,7 @@ async function saveTaskProgress() {
     owner: currentUser.value,
     taskId: selectedTask.value.id,
     progress: progressDraft.value,
-    recordedAt: resolveRecordedAt(progressDate.value, progressTime.value),
+    recordedAt: dateTimeToIso(progressDate.value, progressTime.value),
   });
   const updated = await invoke("get_task", {
     owner: currentUser.value,
@@ -1856,12 +1848,31 @@ function formatDeadline(value) {
 
 function formatTime(value) {
   if (!value) return "";
+  // 仅日期（未指定具体时间）时只展示日期
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T00:00:00`).toLocaleString("zh-CN", {
+      month: "numeric",
+      day: "numeric",
+    });
+  }
   return new Date(value).toLocaleString("zh-CN", {
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+// 生命周期排序：仅日期事件视为该日末尾，排在当天有具体时间的事件之后。
+function compareEventTime(a, b) {
+  const ms = (value) => {
+    if (!value) return 0;
+    return /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? new Date(`${value}T23:59:59`).getTime()
+      : new Date(value).getTime();
+  };
+  const diff = ms(a.created_at) - ms(b.created_at);
+  return diff !== 0 ? diff : a.id - b.id;
 }
 
 function localDateInputValue() {

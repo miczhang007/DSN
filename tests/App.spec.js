@@ -379,7 +379,7 @@ describe("桌面便签核心交互", () => {
     const confirmBtn = [...document.querySelectorAll(".confirm-actions button")].find((b) => b.textContent === "确认完成");
     confirmBtn.click();
     await flushApp();
-    expect(invokeMock).toHaveBeenCalledWith("complete_task", expect.objectContaining({ taskId: "t1", completedAt: null }));
+    expect(invokeMock).toHaveBeenCalledWith("complete_task", expect.objectContaining({ taskId: "t1", completedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }));
     expect(wrapper.find(".task-title.done").exists()).toBe(true);
     expect(wrapper.find(".complete-button.done").exists()).toBe(true);
   });
@@ -514,8 +514,8 @@ describe("桌面便签核心交互", () => {
     await wrapper.vm.$nextTick();
     await wrapper.find('textarea[placeholder*="记录当前进展"]').setValue("已完成资料分类");
     await wrapper.find(".progress-submit").trigger("click");
-    // 记录时间默认不指定（具体时间为空 → recordedAt 为 null，由后端按当前时刻记录）
-    expect(invokeMock).toHaveBeenCalledWith("add_task_progress", expect.objectContaining({ progress: "已完成资料分类", recordedAt: null }));
+    // 记录时间默认不指定（具体时间为空 → recordedAt 为仅日期）
+    expect(invokeMock).toHaveBeenCalledWith("add_task_progress", expect.objectContaining({ progress: "已完成资料分类", recordedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }));
   });
 
   it("详情页完成任务可选择完成时间", async () => {
