@@ -670,18 +670,25 @@ fn delete_task_progress(
     let owner = normalize_owner(&owner)?;
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
     let task = query_task(&conn, &owner, &task_id)?;
-    let deleted = conn
-        .execute(
-            "
-            DELETE FROM task_events
-            WHERE id = ?1 AND task_id = ?2 AND event_type = 'progress_updated'
-            ",
+    // 仅允许删除“进度”类生命周期日志，其他类型日志不可删除。
+    let event_type: Option<String> = conn
+        .query_row(
+            "SELECT event_type FROM task_events WHERE id = ?1 AND task_id = ?2",
             params![event_id, task_id],
+            |row| row.get(0),
         )
+        .optional()
         .map_err(|err| err.to_string())?;
-    if deleted == 0 {
-        return Err("进度记录不存在或无法删除".to_string());
+    match event_type.as_deref() {
+        None => return Err("记录不存在".to_string()),
+        Some("progress_updated") => {}
+        Some(_) => return Err("仅进度记录可删除".to_string()),
     }
+    conn.execute(
+        "DELETE FROM task_events WHERE id = ?1 AND task_id = ?2",
+        params![event_id, task_id],
+    )
+    .map_err(|err| err.to_string())?;
     Ok(())
 }
 
