@@ -605,7 +605,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.1 - 2026-09-03 11:24";
+const versionLabel = "v1.4.1 - 2026-09-03 11:29";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -1936,6 +1936,8 @@ function eventText(event) {
     suspended: "挂起任务",
     activated: "激活任务",
     progress_updated: formatTextValue(event.after_value),
+    milestone_completed: `完成节点：${formatTextValue(event.after_value)}`,
+    milestone_completed_undone: `撤销完成节点：${formatTextValue(event.after_value)}`,
     milestone_created: `新增节点：${formatTextValue(event.after_value)}`,
     milestone_renamed: `节点改名：${formatTextValue(event.before_value)} -> ${formatTextValue(event.after_value)}`,
     milestone_planned_changed: `节点计划时间：${formatDeadline(event.before_value)} -> ${formatDeadline(event.after_value)}`,

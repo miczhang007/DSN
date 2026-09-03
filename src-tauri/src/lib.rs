@@ -317,6 +317,22 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
 
     migrate_legacy_deadlines(conn)?;
+    migrate_milestone_event_types(conn)?;
+    Ok(())
+}
+
+/// 历史兼容：早期“完成节点/撤销完成节点”以进度记录形式写入，现迁移为独立事件类型（仅进度类可删除），并去除 after_value 前缀保留节点名。
+fn migrate_milestone_event_types(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE task_events SET event_type='milestone_completed', after_value=substr(after_value, 6)
+         WHERE event_type='progress_updated' AND after_value LIKE '完成节点：%'",
+        [],
+    )?;
+    conn.execute(
+        "UPDATE task_events SET event_type='milestone_completed_undone', after_value=substr(after_value, 8)
+         WHERE event_type='progress_updated' AND after_value LIKE '撤销完成节点：%'",
+        [],
+    )?;
     Ok(())
 }
 
@@ -1254,13 +1270,12 @@ fn complete_milestone(
         params![completed, now, milestone_id, task_id],
     )
     .map_err(|err| err.to_string())?;
-    let progress_text = format!("完成节点：{}", milestone.title);
     insert_event(
         &conn,
         &task_id,
-        "progress_updated",
+        "milestone_completed",
         None,
-        Some(&progress_text),
+        Some(&milestone.title),
     )?;
     Ok(())
 }
@@ -1290,13 +1305,12 @@ fn undo_complete_milestone(
         params![now, milestone_id, task_id],
     )
     .map_err(|err| err.to_string())?;
-    let progress_text = format!("撤销完成节点：{}", milestone.title);
     insert_event(
         &conn,
         &task_id,
-        "progress_updated",
+        "milestone_completed_undone",
         None,
-        Some(&progress_text),
+        Some(&milestone.title),
     )?;
     Ok(())
 }
