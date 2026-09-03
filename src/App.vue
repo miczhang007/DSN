@@ -108,7 +108,7 @@
               type="button"
               :class="{ done: taskStatus(task) === 'completed' }"
               :aria-label="`完成 ${task.title}`"
-              @click.stop="openCompleteDialog(task.id)"
+              @click.stop="completeTaskEntry(task)"
             ></button>
             <button
               class="task-main"
@@ -375,7 +375,7 @@
             <button v-if="taskStatus(selectedTask) === 'pending' || taskStatus(selectedTask) === 'in_progress'" class="text-button" type="button" @click="detailAction('suspend')">挂起</button>
             <button v-if="taskStatus(selectedTask) === 'suspended'" class="text-button" type="button" @click="detailAction('activate')">激活</button>
             <button v-if="taskStatus(selectedTask) === 'pending'" class="text-button" type="button" @click="detailAction('start')">进行中</button>
-            <button v-if="!selectedTask.completed_at" class="text-button" type="button" @click="openCompleteDialog(selectedTask.id)">已完成</button>
+            <button v-if="!selectedTask.completed_at" class="text-button" type="button" @click="detailCompleteEntry">已完成</button>
             <button v-if="taskStatus(selectedTask) === 'completed'" class="text-button" type="button" @click="detailAction('undo_complete')">撤销完成</button>
             <button class="text-button" type="button" @click="detailAction('archive')">归档</button>
             <button class="text-button" type="button" @click="toggleDetailEdit">{{ detailEditOpen ? '收起编辑' : '任务编辑' }}</button>
@@ -605,7 +605,7 @@ const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.1 - 2026-09-03 11:04";
+const versionLabel = "v1.4.1 - 2026-09-03 11:14";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -1352,6 +1352,24 @@ async function detailAction(action) {
     await refreshActiveTasks();
   } catch (err) {
     showNotice(err, "任务操作失败");
+  }
+}
+
+// 周期任务标记完成无需确认完成时间，直接完成（当前时刻）；普通任务弹窗确认。
+function completeTaskEntry(task) {
+  if (task.is_recurring) {
+    performComplete(task.id, null);
+  } else {
+    openCompleteDialog(task.id);
+  }
+}
+
+function detailCompleteEntry() {
+  if (!selectedTask.value) return;
+  if (selectedTask.value.is_recurring) {
+    performComplete(selectedTask.value.id, null);
+  } else {
+    openCompleteDialog(selectedTask.value.id);
   }
 }
 
