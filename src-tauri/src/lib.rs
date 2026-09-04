@@ -376,11 +376,13 @@ fn list_active_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>, 
         SELECT t.id, t.owner, t.title, t.deadline_at, t.is_urgent, t.created_at, t.updated_at, t.completed_at, t.archived_at,
           (SELECT m.title FROM task_milestones m
             WHERE m.task_id = t.id AND m.completed_at IS NULL
-            ORDER BY CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
+            ORDER BY m.sort_order IS NULL ASC, m.sort_order ASC,
+              CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
             LIMIT 1),
           (SELECT m.planned_at FROM task_milestones m
             WHERE m.task_id = t.id AND m.completed_at IS NULL
-            ORDER BY CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
+            ORDER BY m.sort_order IS NULL ASC, m.sort_order ASC,
+              CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
             LIMIT 1),
           t.recurring_setting_id, t.occurrence_date,
           CASE WHEN t.recurring_setting_id IS NULL THEN 0 ELSE 1 END,
@@ -436,11 +438,13 @@ fn get_task(state: State<DbState>, owner: String, task_id: String) -> Result<Tas
             SELECT t.id, t.owner, t.title, t.deadline_at, t.is_urgent, t.created_at, t.updated_at, t.completed_at, t.archived_at,
               (SELECT m.title FROM task_milestones m
                 WHERE m.task_id = t.id AND m.completed_at IS NULL
-                ORDER BY CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
+                ORDER BY m.sort_order IS NULL ASC, m.sort_order ASC,
+                  CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
                 LIMIT 1),
               (SELECT m.planned_at FROM task_milestones m
                 WHERE m.task_id = t.id AND m.completed_at IS NULL
-                ORDER BY CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
+                ORDER BY m.sort_order IS NULL ASC, m.sort_order ASC,
+                  CASE WHEN m.planned_at IS NULL THEN 1 ELSE 0 END, m.planned_at ASC, m.id ASC
                 LIMIT 1),
               t.recurring_setting_id, t.occurrence_date,
               CASE WHEN t.recurring_setting_id IS NULL THEN 0 ELSE 1 END,
