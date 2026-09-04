@@ -479,6 +479,16 @@ h1 {
   text-decoration: line-through;
 }
 
+.in-progress-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  background: rgba(63, 146, 85, 0.85);
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+
 .complete-button {
   width: 17px;
   height: 17px;
@@ -610,7 +620,7 @@ h1 {
 
 .milestone-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   padding: 7px 0;
@@ -618,11 +628,18 @@ h1 {
 }
 
 .milestone-row.has-check {
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: 20px minmax(0, 1fr);
 }
 
 .milestone-row.draft-row {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.milestone-row.dragging {
+  opacity: 0.55;
+  background: rgba(255, 252, 228, 0.8);
+  border-radius: 6px;
+  box-shadow: 0 4px 10px rgba(48, 37, 15, 0.15);
 }
 
 .milestone-row.editing {
@@ -658,6 +675,12 @@ h1 {
   background: rgba(255, 255, 255, 0.38);
 }
 
+.milestone-check.done {
+  display: inline-block;
+  border-color: rgba(83, 112, 55, 0.65);
+  background: rgba(83, 112, 55, 0.4);
+}
+
 .milestone-main {
   display: grid;
   gap: 3px;
@@ -691,6 +714,23 @@ h1 {
   display: flex;
   gap: 2px;
   align-items: center;
+}
+
+.milestone-inline-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.milestone-inline-actions .text-button {
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.confirm-datetime {
+  margin-bottom: 0;
 }
 
 .milestone-edit-fields {
@@ -787,28 +827,14 @@ h1 {
 
 .date-time-inputs input {
   min-width: 0;
+}
+
+.date-time-inputs input[type="date"] {
+  flex: 1.4;
+}
+
+.date-time-inputs input[type="time"] {
   flex: 1;
-}
-
-.time-toggle {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  flex: 0 0 auto;
-  color: rgba(64, 51, 27, 0.66);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.time-toggle input {
-  width: auto;
-  margin: 0;
-  flex: 0 0 auto;
-}
-
-.time-input {
-  max-width: 150px;
-  margin-top: 8px;
 }
 
 .milestone-edit-fields .date-time-inputs {
