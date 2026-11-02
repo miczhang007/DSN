@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "vitest run",
+    "test": "npm run test:main",
+    "test:main": "vitest run",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib",
+    "test:all": "npm run test:main && npm run test:rust",
     "test:watch": "vitest",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
