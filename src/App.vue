@@ -512,30 +512,27 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import AboutView from "./components/AboutView.vue";
 import AppMenu from "./components/AppMenu.vue";
 import AppNotice from "./components/AppNotice.vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
+import { useHistory } from "./composables/useHistory.js";
 import { useNoteSettings } from "./composables/useNoteSettings.js";
 import { useNotice } from "./composables/useNotice.js";
+import { useRecurringTaskSettings } from "./composables/useRecurringTaskSettings.js";
+import { useTaskCreation } from "./composables/useTaskCreation.js";
 import { useTaskDetail } from "./composables/useTaskDetail.js";
 import { useTaskList } from "./composables/useTaskList.js";
 import { useUsers } from "./composables/useUsers.js";
-import {
-  dateTimeToIso,
-  defaultStartTime,
-  formatDeadline,
-  formatTime,
-  localDateInputValue,
-} from "./lib/datetime.js";
+import { formatDeadline, formatTime } from "./lib/datetime.js";
 import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.4.2 - 2026-11-02 15:56";
+const versionLabel = "v1.4.2 - 2026-11-02 15:58";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -664,39 +661,69 @@ const {
   refreshActiveTasks,
 });
 
-const archivedTasks = ref([]);
-const draft = reactive({
-  title: "",
-  isUrgent: false,
-  isRecurring: false,
-  isFuture: false,
-  startAt: "",
-  startAtTime: "",
-  dateRangeType: "long",
-  startDate: localDateInputValue(),
-  endDate: "",
-  frequencyType: "daily",
-  weekdays: [],
-  repeatCount: 1,
-  generateTime: "06:00",
-  milestones: [],
-  milestoneDraftTitle: "",
-  milestoneDraftPlannedAt: "",
-  milestoneDraftPlannedAtTime: "",
-  milestoneFormOpen: false,
+const { draft, createTask, addDraftMilestone, removeDraftMilestone, toggleFutureTask } = useTaskCreation({
+  currentUser,
+  view,
+  refreshActiveTasks,
 });
+
+const {
+  recurringSettings,
+  recurringSettingTasks,
+  recurringSettingEvents,
+  recurringDetail,
+  recurringCompletedCount,
+  selectedRecurringSettingId,
+  recurringReturnView,
+  recurringDraft,
+  openRecurringSettings,
+  voidRecurringSetting,
+  deleteRecurringSetting,
+  openRecurringSetting,
+  openRecurringSettingDetail,
+  openRecurringSettingById,
+  saveRecurringSetting,
+  recurringEventText,
+  recurringFrequencyText,
+  recurringTaskStatusText,
+  recurringTaskStatusClass,
+  recurringSummary,
+} = useRecurringTaskSettings({
+  currentUser,
+  view,
+  menuOpen,
+  notify: showNotice,
+  expandedHistoryTaskId,
+  openConfirmation,
+  refreshActiveTasks,
+  draft,
+  openUserManager,
+});
+
+const {
+  archivedTasks,
+  openHistory,
+  toggleHistoryActions,
+  resetHistoryState,
+  historyAction,
+  canUndoTask,
+  deleteArchivedTask,
+} = useHistory({
+  currentUser,
+  view,
+  menuOpen,
+  notify: showNotice,
+  confirmation,
+  expandedHistoryTaskId,
+  openConfirmation,
+  refreshActiveTasks,
+  openUserManager,
+});
+
 const weekdayOptions = [
   { label: "一", value: 0 }, { label: "二", value: 1 }, { label: "三", value: 2 },
   { label: "四", value: 3 }, { label: "五", value: 4 }, { label: "六", value: 5 }, { label: "日", value: 6 },
 ];
-const recurringSettings = ref([]);
-const recurringSettingTasks = ref([]);
-const recurringSettingEvents = ref([]);
-const recurringDetail = ref(null);
-const recurringCompletedCount = computed(() => recurringSettingTasks.value.filter((task) => Boolean(task.completed_at)).length);
-const selectedRecurringSettingId = ref("");
-const recurringReturnView = ref("home");
-const recurringDraft = reactive({ title: "", isUrgent: false, dateRangeType: "long", startDate: localDateInputValue(), endDate: "", frequencyType: "daily", weekdays: [], repeatCount: 1, generateTime: "06:00" });
 let recurringRefreshTimer = null;
 
 const viewTitle = computed(() => {
@@ -820,112 +847,6 @@ function openAdd() {
   view.value = "add";
 }
 
-async function openHistory() {
-  if (!currentUser.value) {
-    openUserManager();
-    return;
-  }
-  menuOpen.value = false;
-  expandedHistoryTaskId.value = "";
-  view.value = "history";
-  archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
-}
-
-async function openRecurringSettings() {
-  if (!currentUser.value) return openUserManager();
-  menuOpen.value = false;
-  expandedHistoryTaskId.value = "";
-  recurringSettings.value = await invoke("list_recurring_task_settings", { owner: currentUser.value });
-  view.value = "recurring-settings";
-}
-
-function voidRecurringSetting(setting) {
-  openConfirmation("作废周期任务设置", "作废后不可恢复，且不会再生成新的任务。确定继续吗？", async () => {
-    await invoke("void_recurring_task_setting", { owner: currentUser.value, settingId: setting.id });
-    expandedHistoryTaskId.value = "";
-    recurringSettings.value = await invoke("list_recurring_task_settings", { owner: currentUser.value });
-  }, "确认作废");
-}
-
-function deleteRecurringSetting(setting) {
-  openConfirmation("删除周期任务规则", `确定删除“${setting.title}”吗？删除后不可恢复。`, async () => {
-    try {
-      await invoke("delete_recurring_task_setting", { owner: currentUser.value, settingId: setting.id });
-      expandedHistoryTaskId.value = "";
-      recurringSettings.value = await invoke("list_recurring_task_settings", { owner: currentUser.value });
-    } catch (err) {
-      showNotice(err, "删除周期任务规则失败");
-    }
-  });
-}
-
-async function openRecurringSetting(setting = null) {
-  expandedHistoryTaskId.value = "";
-  const source = setting || { id: "", title: draft.title, is_urgent: draft.isUrgent, date_range_type: draft.dateRangeType, start_date: draft.startDate, end_date: draft.endDate, frequency_type: draft.frequencyType, weekdays: draft.weekdays.join(","), repeat_count: draft.repeatCount, generate_time: draft.generateTime };
-  selectedRecurringSettingId.value = source.id;
-  recurringReturnView.value = view.value;
-  recurringDraft.title = source.title;
-  recurringDraft.isUrgent = false;
-  recurringDraft.dateRangeType = source.date_range_type;
-  recurringDraft.startDate = source.start_date;
-  recurringDraft.endDate = source.end_date || "";
-  recurringDraft.frequencyType = source.frequency_type;
-  recurringDraft.weekdays = String(source.weekdays || "").split(",").filter(Boolean).map(Number);
-  recurringDraft.repeatCount = source.repeat_count || 1;
-  recurringDraft.generateTime = source.generate_time || "06:00";
-  recurringSettingTasks.value = source.id ? await invoke("list_recurring_setting_tasks", { owner: currentUser.value, settingId: source.id }) : [];
-  view.value = "recurring-setting";
-}
-
-async function openRecurringSettingDetail(setting) {
-  expandedHistoryTaskId.value = "";
-  recurringDetail.value = setting;
-  recurringSettingTasks.value = await invoke("list_recurring_setting_tasks", { owner: currentUser.value, settingId: setting.id });
-  recurringSettingEvents.value = await invoke("list_recurring_setting_events", { owner: currentUser.value, settingId: setting.id });
-  view.value = "recurring-setting-detail";
-}
-
-async function openRecurringSettingById(id) {
-  const latestSettings = await invoke("list_recurring_task_settings", { owner: currentUser.value });
-  recurringSettings.value = latestSettings;
-  const setting = latestSettings.find((item) => item.id === id);
-  if (setting) await openRecurringSetting(setting);
-}
-
-function recurringEventText(type) {
-  return { created: "创建规则", updated: "编辑规则", voided: "作废规则" }[type] || type;
-}
-
-function recurringFrequencyText(setting) {
-  if (!setting) return "";
-  const label = { daily: "按日", weekly: "按周", monthly: "按月" }[setting.frequency_type] || "";
-  return `${label}${setting.repeat_count > 1 ? `（${setting.repeat_count} 次）` : ""}`;
-}
-
-function recurringTaskStatusText(task) {
-  if (task.archived_at) return task.completed_at ? "已完成" : "未完成";
-  return "待完成";
-}
-
-function recurringTaskStatusClass(task) {
-  if (task.archived_at) return task.completed_at ? "status-completed" : "status-uncompleted";
-  return "status-pending";
-}
-
-async function saveRecurringSetting() {
-  const payload = { owner: currentUser.value, title: recurringDraft.title, isUrgent: false, dateRangeType: recurringDraft.dateRangeType, startDate: recurringDraft.startDate, endDate: recurringDraft.dateRangeType === "range" ? recurringDraft.endDate || null : null, frequencyType: recurringDraft.frequencyType, weekdays: recurringDraft.weekdays, repeatCount: recurringDraft.repeatCount, generateTime: recurringDraft.generateTime };
-  if (selectedRecurringSettingId.value) {
-    if (recurringDraft.status === "已作废") return;
-    const updated = await invoke("update_recurring_task_setting", { ...payload, settingId: selectedRecurringSettingId.value });
-    recurringSettings.value = recurringSettings.value.map((setting) => setting.id === updated.id ? updated : setting);
-    if (recurringDetail.value?.id === updated.id) recurringDetail.value = updated;
-  } else {
-    await invoke("create_recurring_task_setting", payload);
-  }
-  if (recurringReturnView.value === "recurring-settings") await openRecurringSettings();
-  else { view.value = recurringReturnView.value || "home"; await refreshActiveTasks(); }
-}
-
 function openUserManager() {
   menuOpen.value = false;
   expandedHistoryTaskId.value = "";
@@ -942,136 +863,11 @@ function openAbout() {
   view.value = "about";
 }
 
-async function createTask() {
-  if (!draft.title) return;
-  if (draft.isRecurring) {
-    await invoke("create_recurring_task_setting", {
-      owner: currentUser.value,
-      title: draft.title,
-      isUrgent: false,
-      dateRangeType: draft.dateRangeType,
-      startDate: draft.startDate,
-      endDate: draft.dateRangeType === "range" ? draft.endDate || null : null,
-      frequencyType: draft.frequencyType,
-      weekdays: draft.weekdays,
-      repeatCount: draft.repeatCount,
-      generateTime: draft.generateTime,
-    });
-    draft.title = "";
-    draft.isUrgent = false;
-    draft.isRecurring = false;
-    draft.isFuture = false;
-    draft.startAt = "";
-    draft.startAtTime = "";
-    draft.dateRangeType = "long";
-    draft.startDate = localDateInputValue();
-    draft.endDate = "";
-    draft.frequencyType = "daily";
-    draft.weekdays = [];
-    draft.generateTime = "06:00";
-    view.value = "home";
-    await refreshActiveTasks();
-    return;
-  }
-  const milestones = draft.milestones.map((ms) => ({
-    title: ms.title,
-    plannedAt: dateTimeToIso(ms.plannedAt, ms.plannedAtTime),
-  }));
-  await invoke("create_task", {
-    owner: currentUser.value,
-    title: draft.title,
-    deadlineAt: null,
-    isUrgent: draft.isUrgent,
-    startAt: draft.isFuture ? dateTimeToIso(draft.startAt, draft.startAtTime) : null,
-    milestones: milestones.length ? milestones : null,
-  });
-  draft.title = "";
-  draft.isUrgent = false;
-  draft.isRecurring = false;
-  draft.isFuture = false;
-  draft.startAt = "";
-  draft.startAtTime = "";
-  draft.milestones = [];
-  draft.milestoneDraftTitle = "";
-  draft.milestoneDraftPlannedAt = "";
-  draft.milestoneDraftPlannedAtTime = "";
-  view.value = "home";
-  await refreshActiveTasks();
-}
-
-function addDraftMilestone() {
-  if (!draft.milestoneDraftTitle) return;
-  draft.milestones.push({
-    title: draft.milestoneDraftTitle,
-    plannedAt: draft.milestoneDraftPlannedAt,
-    plannedAtTime: draft.milestoneDraftPlannedAtTime,
-  });
-  draft.milestoneDraftTitle = "";
-  draft.milestoneDraftPlannedAt = "";
-  draft.milestoneDraftPlannedAtTime = "";
-}
-
-function removeDraftMilestone(index) {
-  draft.milestones.splice(index, 1);
-}
-
-function toggleFutureTask() {
-  if (draft.isFuture && !draft.startAt) {
-    draft.startAt = defaultStartTime();
-  }
-}
-
-function toggleHistoryActions(taskId) {
-  expandedHistoryTaskId.value = expandedHistoryTaskId.value === taskId ? "" : taskId;
-}
-
-async function historyAction(task, action) {
-  if (action === "undo_completion") {
-    openUndoCompletionConfirmation(task);
-    return;
-  }
-  await runHistoryAction(task, action);
-}
-
-async function runHistoryAction(task, action) {
-  try {
-    await invoke("restore_archived_task", { owner: currentUser.value, taskId: task.id, action });
-    archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
-    await refreshActiveTasks();
-    expandedHistoryTaskId.value = "";
-  } catch (err) {
-    showNotice(err, "历史任务操作失败");
-  }
-}
-
-function openUndoCompletionConfirmation(task) {
-  expandedHistoryTaskId.value = "";
-  confirmation.value = {
-    title: "撤销完成",
-    message: "是否同时撤销归档状态，将该任务重新加入当前任务列表？",
-    titleId: "confirm-dialog-title",
-    kind: "delete",
-    choices: [
-      { label: "仅撤销完成", action: () => runHistoryAction(task, "undo_completion_only") },
-      { label: "撤销完成并撤销归档", danger: true, action: () => runHistoryAction(task, "undo_completion") },
-    ],
-  };
-}
-
 function confirmChoice(choice) {
   const action = choice?.action;
   closeConfirmation();
   if (!action) return;
   action().catch((err) => showNotice(err, "操作失败，请稍后重试"));
-}
-
-function canUndoTask(task) {
-  return !task.is_recurring || String(task.occurrence_date || "").startsWith(localDateInputValue());
-}
-
-function recurringSummary(setting) {
-  const frequency = { daily: "按日", weekly: "按周", monthly: "按月" }[setting.frequency_type] || "";
-  return `${frequency}${setting.repeat_count > 1 ? ` · ${setting.repeat_count} 次` : ""} · ${setting.generate_time} 生成`;
 }
 
 function nextMilestoneText(task) {
@@ -1085,14 +881,6 @@ function nextMilestoneText(task) {
 function openConfirmation(title, message, action, actionLabel = "确认删除") {
   expandedHistoryTaskId.value = "";
   confirmation.value = { title, message, action, actionLabel, titleId: "confirm-dialog-title", kind: "delete", isCompleted: false };
-}
-
-function deleteArchivedTask(task) {
-  openConfirmation("删除任务", `确定删除“${task.title}”吗？删除后将从历史和任务列表中隐藏。`, async () => {
-    await invoke("delete_task", { owner: currentUser.value, taskId: task.id });
-    view.value = "history";
-    archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
-  });
 }
 
 function closeConfirmation() {
@@ -1115,7 +903,7 @@ async function confirmAction() {
 // 切换或删除用户时清空详情残留与历史列表，避免把上一个用户的数据带过来。
 function resetSessionState() {
   resetDetailState();
-  archivedTasks.value = [];
+  resetHistoryState();
 }
 
 async function exitApp() {
