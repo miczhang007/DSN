@@ -32,67 +32,24 @@
         </div>
       </header>
 
-      <Transition name="fade">
-        <nav v-if="menuOpen" class="note-menu" aria-label="菜单" @click.stop>
-          <button type="button" @click="openHistory">历史任务</button>
-          <button type="button" @click="openRecurringSettings">周期任务规则</button>
-          <button type="button" @click="openUserManager">用户管理</button>
-          <div class="menu-section">
-            <label>
-              <span>便签大小</span>
-              <select :value="noteSize" @change="changeNoteSize($event.target.value)">
-                <option v-for="size in sizeOptions" :key="size.value" :value="size.value">
-                  {{ size.label }}
-                </option>
-              </select>
-            </label>
-          </div>
-          <div class="menu-section">
-            <label>
-              <span>便签主题</span>
-              <select :value="noteTheme" @change="changeNoteTheme($event.target.value)">
-                <option v-for="theme in themeOptions" :key="theme.value" :value="theme.value">
-                  {{ theme.label }}
-                </option>
-              </select>
-            </label>
-          </div>
-          <div class="menu-section">
-            <label>
-              <span>便签位置</span>
-              <select :value="notePosition" @change="changeNotePosition($event.target.value)">
-                <option
-                  v-for="position in positionOptions"
-                  :key="position.value"
-                  :value="position.value"
-                >
-                  {{ position.label }}
-                </option>
-              </select>
-            </label>
-          </div>
-          <label class="menu-toggle">
-            <span>开机自启动</span>
-            <input
-              :checked="autoStartEnabled"
-              type="checkbox"
-              role="switch"
-              @change="changeAutoStart($event.target.checked)"
-            />
-          </label>
-          <label class="menu-toggle">
-            <span>极简模式</span>
-            <input
-              :checked="minimalModeEnabled"
-              type="checkbox"
-              role="switch"
-              @change="changeMinimalMode($event.target.checked)"
-            />
-          </label>
-          <button type="button" @click="openAbout">产品简介</button>
-          <button type="button" class="danger" @click="exitApp">退出</button>
-        </nav>
-      </Transition>
+      <AppMenu
+        :open="menuOpen"
+        :note-size="noteSize"
+        :note-theme="noteTheme"
+        :note-position="notePosition"
+        :auto-start-enabled="autoStartEnabled"
+        :minimal-mode-enabled="minimalModeEnabled"
+        @history="openHistory"
+        @recurring-settings="openRecurringSettings"
+        @users="openUserManager"
+        @about="openAbout"
+        @exit="exitApp"
+        @change-size="changeNoteSize"
+        @change-theme="changeNoteTheme"
+        @change-position="changeNotePosition"
+        @change-auto-start="changeAutoStart"
+        @change-minimal="changeMinimalMode"
+      />
 
       <section v-if="view === 'home'" class="content">
         <div v-if="activeTasks.length" ref="taskListEl" class="task-list" role="list">
@@ -534,17 +491,7 @@
         </div>
       </section>
 
-      <section v-else-if="view === 'about'" class="content about-view" @click.stop>
-        <dl>
-          <div><dt>产品名称</dt><dd>{{ productFullName }}</dd></div>
-          <div><dt>当前版本</dt><dd>{{ versionLabel }}</dd></div>
-          <div><dt>开发者</dt><dd>miczhang（个人开发者）</dd></div>
-          <div><dt>数据说明</dt><dd>便签数据默认仅保存在本机，不上传至服务器</dd></div>
-          <div><dt>源码仓库</dt><dd><a href="#" rel="noreferrer" @click.prevent="openExternal(repositoryUrl)">GitHub 开源仓库</a></dd></div>
-          <div><dt>隐私政策</dt><dd><a href="#" rel="noreferrer" @click.prevent="openExternal(privacyPolicyUrl)">查看隐私政策</a></dd></div>
-          <div><dt>联系方式</dt><dd>miczhang007@qq.com</dd></div>
-        </dl>
-      </section>
+      <AboutView v-else-if="view === 'about'" :version-label="versionLabel" @open-external="openExternal" />
 
       <footer class="note-footer">
         <span v-if="currentUser">{{ currentUser }} · {{ activeTasks.length }} items</span>
@@ -552,54 +499,25 @@
       </footer>
     </section>
   </main>
-  <Teleport to="body">
-    <div v-if="confirmation" class="confirm-backdrop" @click.self="closeConfirmation">
-      <section class="confirm-dialog" role="alertdialog" aria-modal="true" :aria-labelledby="confirmation.titleId">
-        <h2 v-if="confirmation.kind !== 'archive'" :id="confirmation.titleId">{{ confirmation.title }}</h2>
-        <p v-if="confirmation.kind !== 'archive' && confirmation.message">{{ confirmation.message }}</p>
-        <label v-if="confirmation.kind === 'archive'" class="check-field confirm-check">
-          <input v-model="confirmation.isCompleted" type="checkbox" />
-          <span>任务已完成</span>
-        </label>
-        <label v-if="confirmation.kind === 'complete'" class="field compact confirm-datetime">
-          <span>完成时间</span>
-          <span class="date-time-inputs">
-            <input v-model="confirmation.state.completedDate" type="date" />
-            <input v-model="confirmation.state.completedTime" type="time" />
-          </span>
-        </label>
-        <div class="confirm-actions">
-          <button class="text-button" type="button" @click="closeConfirmation">取消</button>
-          <template v-if="confirmation.choices && confirmation.choices.length">
-            <button
-              v-for="choice in confirmation.choices"
-              :key="choice.label"
-              class="text-button confirm-button"
-              :class="{ danger: choice.danger }"
-              type="button"
-              @click="confirmChoice(choice)"
-            >
-              {{ choice.label }}
-            </button>
-          </template>
-          <button v-else class="text-button danger confirm-button" type="button" @click="confirmAction">{{ confirmation.actionLabel }}</button>
-        </div>
-      </section>
-    </div>
-  </Teleport>
-  <Teleport to="body">
-    <Transition name="toast">
-      <div v-if="notice" class="app-notice" role="alert" aria-live="assertive">
-        <span>{{ notice.message }}</span>
-        <button type="button" class="icon-button" aria-label="关闭提示" @click="closeNotice">×</button>
-      </div>
-    </Transition>
-  </Teleport>
+  <ConfirmDialog
+    :confirmation="confirmation"
+    @cancel="closeConfirmation"
+    @confirm="confirmAction"
+    @choice="confirmChoice"
+    @change-completed="confirmation.isCompleted = $event"
+    @change-completed-date="confirmation.state.completedDate = $event"
+    @change-completed-time="confirmation.state.completedTime = $event"
+  />
+  <AppNotice :notice="notice" @close="closeNotice" />
 </template>
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import AboutView from "./components/AboutView.vue";
+import AppMenu from "./components/AppMenu.vue";
+import AppNotice from "./components/AppNotice.vue";
+import ConfirmDialog from "./components/ConfirmDialog.vue";
 import { useNotice } from "./composables/useNotice.js";
 import {
   compareEventTime,
@@ -614,32 +532,11 @@ import {
 } from "./lib/datetime.js";
 import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
+import { productName } from "./lib/product-info.js";
 import { loadUsers, normalizeUserName, saveUsers } from "./lib/user-storage.js";
 
-const repositoryUrl = "https://github.com/miczhang007/DSN";
-const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
-const productName = "桌面便签";
-const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.2 - 2026-11-02 15:27";
-const sizeOptions = [
-  { label: "小", value: "small" },
-  { label: "中", value: "medium" },
-  { label: "大", value: "large" },
-];
-const themeOptions = [
-  { label: "黄色", value: "yellow" },
-  { label: "蓝色", value: "blue" },
-  { label: "绿色", value: "green" },
-  { label: "粉红", value: "pink" },
-  { label: "白色", value: "white" },
-];
-const positionOptions = [
-  { label: "居中", value: "center" },
-  { label: "右上", value: "top-right" },
-  { label: "右下", value: "bottom-right" },
-  { label: "左上", value: "top-left" },
-  { label: "左下", value: "bottom-left" },
-];
+// 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
+const versionLabel = "v1.4.2 - 2026-11-02 15:35";
 
 const view = ref("home");
 const menuOpen = ref(false);
