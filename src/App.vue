@@ -520,29 +520,30 @@ import AppNotice from "./components/AppNotice.vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import { useNoteSettings } from "./composables/useNoteSettings.js";
 import { useNotice } from "./composables/useNotice.js";
+import { useTaskDetail } from "./composables/useTaskDetail.js";
 import { useTaskList } from "./composables/useTaskList.js";
 import { useUsers } from "./composables/useUsers.js";
 import {
-  compareEventTime,
   dateTimeToIso,
   defaultStartTime,
   formatDeadline,
   formatTime,
   localDateInputValue,
-  nowLocalParts,
-  splitIsoForInput,
 } from "./lib/datetime.js";
 import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.4.2 - 2026-11-02 15:49";
+const versionLabel = "v1.4.2 - 2026-11-02 15:56";
 
 const view = ref("home");
 const menuOpen = ref(false);
 // 当前本地用户由 App 持有：任务列表与用户管理都需要它，放在最外层避免循环依赖。
 const currentUser = ref("");
+// 确认弹窗与历史操作展开状态被「详情 / 历史 / 用户」多处共用，统一由 App 持有。
+const confirmation = ref(null);
+const expandedHistoryTaskId = ref("");
 
 const { notice, showNotice, closeNotice } = useNotice();
 setErrorReporter((message) => showNotice(message));
@@ -562,6 +563,12 @@ const {
   changeMinimalMode,
 } = useNoteSettings({ closeMenu, notify: showNotice });
 
+// openTask 由 useTaskDetail 提供，而 useTaskList 需要它、useTaskDetail 又需要
+// useTaskList 的 refreshActiveTasks —— 用函数声明延迟解析，打断循环依赖。
+function openTaskDeferred(task) {
+  return openTask(task);
+}
+
 const {
   activeTasks,
   taskListEl,
@@ -574,7 +581,64 @@ const {
   endRowDrag,
   handleTaskMainClick,
   persistOrder,
-} = useTaskList({ currentUser, notify: showNotice, openTask });
+} = useTaskList({ currentUser, notify: showNotice, openTask: openTaskDeferred });
+
+const {
+  selectedTask,
+  taskEvents,
+  milestones,
+  milestoneDraft,
+  editingMilestoneId,
+  expandedMilestoneId,
+  milestoneEditDraft,
+  editDraft,
+  milestoneFormOpen,
+  progressDraft,
+  progressDate,
+  progressTime,
+  detailEditOpen,
+  progressFormOpen,
+  detailReturnView,
+  milestoneListEl,
+  milestoneDragging,
+  milestoneDragIndex,
+  milestoneDragMoved,
+  openTask,
+  resetDetailState,
+  detailAction,
+  toggleDetailEdit,
+  toggleEditFutureTask,
+  completeTaskEntry,
+  detailCompleteEntry,
+  openNodeCompleteDialog,
+  startMilestoneDrag,
+  onMilestoneDragMove,
+  endMilestoneDrag,
+  handleMilestoneMainClick,
+  saveTaskChanges,
+  reloadTaskDetail,
+  openMilestoneForm,
+  closeMilestoneForm,
+  addMilestone,
+  startMilestoneEdit,
+  cancelMilestoneEdit,
+  saveMilestoneEdit,
+  undoCompleteMilestone,
+  deleteMilestone,
+  isMilestoneOverdue,
+  saveTaskProgress,
+  deleteTaskProgress,
+} = useTaskDetail({
+  currentUser,
+  view,
+  menuOpen,
+  notify: showNotice,
+  confirmation,
+  expandedHistoryTaskId,
+  refreshActiveTasks,
+  openUserManager,
+  openConfirmation,
+});
 
 const {
   users,
@@ -596,18 +660,11 @@ const {
   currentUser,
   view,
   openConfirmation,
-  resetDetailState,
+  resetDetailState: resetSessionState,
   refreshActiveTasks,
 });
 
 const archivedTasks = ref([]);
-const selectedTask = ref(null);
-const taskEvents = ref([]);
-const milestones = ref([]);
-const milestoneDraft = reactive({ title: "", plannedAt: "", plannedAtTime: "" });
-const editingMilestoneId = ref(null);
-const expandedMilestoneId = ref("");
-const milestoneEditDraft = reactive({ title: "", plannedAt: "", plannedAtTime: "" });
 const draft = reactive({
   title: "",
   isUrgent: false,
@@ -640,16 +697,6 @@ const recurringCompletedCount = computed(() => recurringSettingTasks.value.filte
 const selectedRecurringSettingId = ref("");
 const recurringReturnView = ref("home");
 const recurringDraft = reactive({ title: "", isUrgent: false, dateRangeType: "long", startDate: localDateInputValue(), endDate: "", frequencyType: "daily", weekdays: [], repeatCount: 1, generateTime: "06:00" });
-const editDraft = reactive({ title: "", isUrgent: false, isFuture: false, startAt: "", startAtTime: "" });
-const milestoneFormOpen = ref(false);
-const progressDraft = ref("");
-const progressDate = ref("");
-const progressTime = ref("");
-const confirmation = ref(null);
-const expandedHistoryTaskId = ref("");
-const detailEditOpen = ref(false);
-const progressFormOpen = ref(false);
-const detailReturnView = ref("home");
 let recurringRefreshTimer = null;
 
 const viewTitle = computed(() => {
@@ -895,52 +942,6 @@ function openAbout() {
   view.value = "about";
 }
 
-async function openTask(task) {
-  if (!currentUser.value) {
-    openUserManager();
-    return;
-  }
-  menuOpen.value = false;
-  expandedHistoryTaskId.value = "";
-  detailReturnView.value = view.value === "history" ? "history" : view.value === "recurring-setting" ? "recurring-setting" : "home";
-  selectedTask.value = task;
-  editDraft.title = task.title;
-  editDraft.isUrgent = Boolean(task.is_urgent);
-  editDraft.isFuture = Boolean(task.start_at);
-  const startParts = splitIsoForInput(task.start_at);
-  editDraft.startAt = startParts.date;
-  editDraft.startAtTime = startParts.time;
-  detailEditOpen.value = false;
-  progressFormOpen.value = false;
-  expandedMilestoneId.value = "";
-  editingMilestoneId.value = null;
-  milestoneFormOpen.value = false;
-  progressDraft.value = "";
-  // 记录时间默认不指定：日期为今天，具体时间留空（未指定时仅按日期记录）。
-  progressDate.value = localDateInputValue();
-  progressTime.value = "";
-  taskEvents.value = await invoke("get_task_events", {
-    owner: currentUser.value,
-    taskId: task.id,
-  });
-  taskEvents.value = [...taskEvents.value].sort(compareEventTime);
-  milestones.value = task.is_recurring
-    ? []
-    : await invoke("list_milestones", {
-        owner: currentUser.value,
-        taskId: task.id,
-      });
-  view.value = "detail";
-}
-
-// 切换或删除用户时清空详情页残留状态，避免把上一个用户的数据带过来。
-function resetDetailState() {
-  selectedTask.value = null;
-  taskEvents.value = [];
-  milestones.value = [];
-  archivedTasks.value = [];
-}
-
 async function createTask() {
   if (!draft.title) return;
   if (draft.isRecurring) {
@@ -1020,209 +1021,8 @@ function toggleFutureTask() {
   }
 }
 
-function toggleEditFutureTask() {
-  if (editDraft.isFuture && !editDraft.startAt) {
-    editDraft.startAt = defaultStartTime();
-  }
-}
-
 function toggleHistoryActions(taskId) {
   expandedHistoryTaskId.value = expandedHistoryTaskId.value === taskId ? "" : taskId;
-}
-
-function toggleDetailEdit() {
-  detailEditOpen.value = !detailEditOpen.value;
-  if (!detailEditOpen.value) editingMilestoneId.value = null;
-}
-
-async function detailAction(action) {
-  if (!selectedTask.value) return;
-  const taskId = selectedTask.value.id;
-  try {
-    if (action === "suspend") {
-      await invoke("suspend_task", { owner: currentUser.value, taskId });
-    } else if (action === "activate") {
-      await invoke("activate_task", { owner: currentUser.value, taskId });
-    } else if (action === "start") {
-      await invoke("start_task", { owner: currentUser.value, taskId });
-    } else if (action === "complete") {
-      await invoke("complete_task", { owner: currentUser.value, taskId, completedAt: null });
-    } else if (action === "undo_complete") {
-      await invoke("undo_complete_task", { owner: currentUser.value, taskId });
-    } else if (action === "archive") {
-      if (taskStatus(selectedTask.value) === "completed") {
-        await invoke("archive_task", { owner: currentUser.value, taskId, isCompleted: true });
-      } else {
-        confirmArchiveTask(taskId);
-        return;
-      }
-    }
-    const updated = await invoke("get_task", {
-      owner: currentUser.value,
-      taskId,
-    });
-    await openTask(updated);
-    await refreshActiveTasks();
-  } catch (err) {
-    showNotice(err, "任务操作失败");
-  }
-}
-
-// 周期任务标记完成无需确认完成时间，直接完成（当前时刻）；普通任务弹窗确认。
-function completeTaskEntry(task) {
-  if (task.is_recurring) {
-    performComplete(task.id, null);
-  } else {
-    openCompleteDialog(task.id);
-  }
-}
-
-function detailCompleteEntry() {
-  if (!selectedTask.value) return;
-  if (selectedTask.value.is_recurring) {
-    performComplete(selectedTask.value.id, null);
-  } else {
-    openCompleteDialog(selectedTask.value.id);
-  }
-}
-
-// 列表画圈、详情页“已完成”与节点完成：弹窗选择完成时间（时间默认为不指定，未指定时仅按日期记录）。
-function openCompleteDialog(taskId) {
-  const today = nowLocalParts().date;
-  const state = reactive({ completedDate: today, completedTime: "" });
-  confirmation.value = {
-    title: "完成任务",
-    titleId: "confirm-dialog-title",
-    kind: "complete",
-    state,
-    actionLabel: "确认完成",
-    action: async () => {
-      await performComplete(taskId, dateTimeToIso(state.completedDate, state.completedTime));
-    },
-  };
-}
-
-async function performComplete(taskId, completedAt) {
-  try {
-    await invoke("complete_task", { owner: currentUser.value, taskId, completedAt });
-    await refreshActiveTasks();
-    if (view.value === "detail" && selectedTask.value?.id === taskId) {
-      const updated = await invoke("get_task", {
-        owner: currentUser.value,
-        taskId,
-      });
-      await openTask(updated);
-    }
-  } catch (err) {
-    showNotice(err, "任务操作失败");
-  }
-}
-
-function openNodeCompleteDialog(milestone) {
-  if (!selectedTask.value || milestone.completed_at) return;
-  const today = nowLocalParts().date;
-  const state = reactive({ completedDate: today, completedTime: "" });
-  confirmation.value = {
-    title: "完成节点",
-    titleId: "confirm-dialog-title",
-    kind: "complete",
-    state,
-    actionLabel: "确认完成",
-    action: async () => {
-      await performNodeComplete(milestone.id, dateTimeToIso(state.completedDate, state.completedTime));
-    },
-  };
-}
-
-async function performNodeComplete(milestoneId, completedAt) {
-  try {
-    await invoke("complete_milestone", {
-      owner: currentUser.value,
-      taskId: selectedTask.value.id,
-      milestoneId,
-      completedAt,
-    });
-    await reloadTaskDetail();
-  } catch (err) {
-    showNotice(err, "节点操作失败");
-  }
-}
-
-// —— 节点行：点击展开操作，按住拖动排序（与任务排序一致）——
-const milestoneListEl = ref(null);
-const milestoneDragging = ref(false);
-const milestoneDragIndex = ref(-1);
-const milestoneDragMoved = ref(false);
-const milestoneDragStartY = ref(0);
-let suppressMilestoneClick = false;
-
-function startMilestoneDrag(event, index) {
-  if (event.button !== 0) return;
-  suppressMilestoneClick = false;
-  milestoneDragMoved.value = false;
-  milestoneDragStartY.value = event.clientY;
-  milestoneDragging.value = true;
-  milestoneDragIndex.value = index;
-  window.addEventListener("mousemove", onMilestoneDragMove);
-  window.addEventListener("mouseup", endMilestoneDrag);
-}
-
-function onMilestoneDragMove(event) {
-  if (!milestoneDragging.value) return;
-  if (!milestoneDragMoved.value && Math.abs(event.clientY - milestoneDragStartY.value) < 5) return;
-  milestoneDragMoved.value = true;
-  const rows = milestoneListEl.value?.querySelectorAll(".milestone-row");
-  if (!rows) return;
-  let target = -1;
-  for (let i = 0; i < rows.length; i++) {
-    const rect = rows[i].getBoundingClientRect();
-    if (event.clientY >= rect.top && event.clientY <= rect.bottom) {
-      target = i;
-      break;
-    }
-  }
-  if (target !== -1 && target !== milestoneDragIndex.value) {
-    const list = [...milestones.value];
-    const [moved] = list.splice(milestoneDragIndex.value, 1);
-    list.splice(target, 0, moved);
-    milestones.value = list;
-    milestoneDragIndex.value = target;
-  }
-}
-
-function endMilestoneDrag() {
-  if (!milestoneDragging.value) return;
-  milestoneDragging.value = false;
-  window.removeEventListener("mousemove", onMilestoneDragMove);
-  window.removeEventListener("mouseup", endMilestoneDrag);
-  if (milestoneDragMoved.value) {
-    suppressMilestoneClick = true;
-    persistMilestoneOrder();
-  }
-  milestoneDragIndex.value = -1;
-  milestoneDragMoved.value = false;
-}
-
-async function persistMilestoneOrder() {
-  if (!selectedTask.value) return;
-  try {
-    await invoke("reorder_milestones", {
-      owner: currentUser.value,
-      taskId: selectedTask.value.id,
-      orderedIds: milestones.value.map((milestone) => milestone.id),
-    });
-  } catch (err) {
-    showNotice(err, "保存节点排序失败");
-    await reloadTaskDetail();
-  }
-}
-
-function handleMilestoneMainClick(milestone) {
-  if (suppressMilestoneClick) {
-    suppressMilestoneClick = false;
-    return;
-  }
-  expandedMilestoneId.value = expandedMilestoneId.value === milestone.id ? "" : milestone.id;
 }
 
 async function historyAction(task, action) {
@@ -1274,123 +1074,6 @@ function recurringSummary(setting) {
   return `${frequency}${setting.repeat_count > 1 ? ` · ${setting.repeat_count} 次` : ""} · ${setting.generate_time} 生成`;
 }
 
-async function saveTaskChanges() {
-  if (!selectedTask.value) return;
-  if (!editDraft.title) return;
-  await invoke("update_task", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-    title: editDraft.title,
-    deadlineAt: null,
-    isUrgent: editDraft.isUrgent,
-    startAt:
-      !selectedTask.value.is_recurring && editDraft.isFuture && editDraft.startAt
-        ? dateTimeToIso(editDraft.startAt, editDraft.startAtTime)
-        : null,
-  });
-  const updated = await invoke("get_task", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-  });
-  await openTask(updated);
-}
-
-async function reloadTaskDetail() {
-  if (!selectedTask.value) return;
-  const updated = await invoke("get_task", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-  });
-  await openTask(updated);
-}
-
-function openMilestoneForm() {
-  milestoneFormOpen.value = true;
-}
-
-function closeMilestoneForm() {
-  milestoneDraft.title = "";
-  milestoneDraft.plannedAt = "";
-  milestoneDraft.plannedAtTime = "";
-  milestoneFormOpen.value = false;
-}
-
-async function addMilestone() {
-  if (!selectedTask.value || !milestoneDraft.title) return;
-  await invoke("add_milestone", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-    title: milestoneDraft.title,
-    plannedAt: dateTimeToIso(milestoneDraft.plannedAt, milestoneDraft.plannedAtTime),
-  });
-  milestoneDraft.title = "";
-  milestoneDraft.plannedAt = "";
-  milestoneDraft.plannedAtTime = "";
-  milestoneFormOpen.value = false;
-  await reloadTaskDetail();
-}
-
-function startMilestoneEdit(milestone) {
-  editingMilestoneId.value = milestone.id;
-  expandedMilestoneId.value = "";
-  milestoneEditDraft.title = milestone.title;
-  const parts = splitIsoForInput(milestone.planned_at);
-  milestoneEditDraft.plannedAt = parts.date;
-  milestoneEditDraft.plannedAtTime = parts.time;
-}
-
-function cancelMilestoneEdit() {
-  editingMilestoneId.value = null;
-}
-
-async function saveMilestoneEdit(milestone) {
-  if (!selectedTask.value || !milestoneEditDraft.title) return;
-  await invoke("update_milestone", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-    milestoneId: milestone.id,
-    title: milestoneEditDraft.title,
-    plannedAt: dateTimeToIso(milestoneEditDraft.plannedAt, milestoneEditDraft.plannedAtTime),
-  });
-  editingMilestoneId.value = null;
-  await reloadTaskDetail();
-}
-
-async function undoCompleteMilestone(milestone) {
-  if (!selectedTask.value) return;
-  await invoke("undo_complete_milestone", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-    milestoneId: milestone.id,
-  });
-  expandedMilestoneId.value = "";
-  await reloadTaskDetail();
-}
-
-function deleteMilestone(milestone) {
-  openConfirmation(
-    "删除节点",
-    `确定删除节点“${milestone.title}”吗？此操作不能恢复。`,
-    () => removeMilestone(milestone),
-  );
-}
-
-async function removeMilestone(milestone) {
-  if (!selectedTask.value) return;
-  await invoke("delete_milestone", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-    milestoneId: milestone.id,
-  });
-  await reloadTaskDetail();
-}
-
-function isMilestoneOverdue(plannedAt) {
-  if (!plannedAt) return false;
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(plannedAt) ? `${plannedAt}T00:00:00` : plannedAt;
-  return new Date(normalized).getTime() < Date.now();
-}
-
 function nextMilestoneText(task) {
   const title = task.next_milestone_title || "未命名";
   const planned = task.next_milestone_planned_at
@@ -1399,57 +1082,9 @@ function nextMilestoneText(task) {
   return `下一节点：${title}${planned}`;
 }
 
-async function saveTaskProgress() {
-  if (!selectedTask.value || !progressDraft.value) return;
-  await invoke("add_task_progress", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-    progress: progressDraft.value,
-    recordedAt: dateTimeToIso(progressDate.value, progressTime.value),
-  });
-  const updated = await invoke("get_task", {
-    owner: currentUser.value,
-    taskId: selectedTask.value.id,
-  });
-  await openTask(updated);
-}
-
-async function deleteTaskProgress(event) {
-  if (!selectedTask.value) return;
-  const taskId = selectedTask.value.id;
-  openConfirmation("删除进度", "确定删除这条进度记录吗？此操作不能恢复。", () =>
-    removeTaskProgress(taskId, event.id),
-  );
-}
-
-async function removeTaskProgress(taskId, eventId) {
-  await invoke("delete_task_progress", {
-    owner: currentUser.value,
-    taskId,
-    eventId,
-  });
-  const updated = await invoke("get_task", {
-    owner: currentUser.value,
-    taskId,
-  });
-  await openTask(updated);
-}
-
 function openConfirmation(title, message, action, actionLabel = "确认删除") {
   expandedHistoryTaskId.value = "";
   confirmation.value = { title, message, action, actionLabel, titleId: "confirm-dialog-title", kind: "delete", isCompleted: false };
-}
-
-function confirmArchiveTask(taskId) {
-  const state = { isCompleted: false };
-  confirmation.value = { title: "归档任务", message: "是否已完成此任务？勾选后将同时记录完成和归档；不勾选则只记录归档。", actionLabel: "提交", titleId: "confirm-dialog-title", kind: "archive", isCompleted: false, state, action: async () => {
-    await invoke("archive_task", { owner: currentUser.value, taskId, isCompleted: state.isCompleted });
-    await refreshActiveTasks();
-    if (view.value === "detail" && selectedTask.value?.id === taskId) {
-      const updated = await invoke("get_task", { owner: currentUser.value, taskId });
-      await openTask(updated);
-    }
-  } };
 }
 
 function deleteArchivedTask(task) {
@@ -1475,6 +1110,12 @@ async function confirmAction() {
   } catch (err) {
     showNotice(err, "操作失败，请稍后重试");
   }
+}
+
+// 切换或删除用户时清空详情残留与历史列表，避免把上一个用户的数据带过来。
+function resetSessionState() {
+  resetDetailState();
+  archivedTasks.value = [];
 }
 
 async function exitApp() {
