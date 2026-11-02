@@ -518,7 +518,10 @@ import AboutView from "./components/AboutView.vue";
 import AppMenu from "./components/AppMenu.vue";
 import AppNotice from "./components/AppNotice.vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
+import { useNoteSettings } from "./composables/useNoteSettings.js";
 import { useNotice } from "./composables/useNotice.js";
+import { useTaskList } from "./composables/useTaskList.js";
+import { useUsers } from "./composables/useUsers.js";
 import {
   compareEventTime,
   dateTimeToIso,
@@ -527,31 +530,76 @@ import {
   formatTime,
   localDateInputValue,
   nowLocalParts,
-  parseStartAtTime,
   splitIsoForInput,
 } from "./lib/datetime.js";
 import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
-import { loadUsers, normalizeUserName, saveUsers } from "./lib/user-storage.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.4.2 - 2026-11-02 15:35";
+const versionLabel = "v1.4.2 - 2026-11-02 15:49";
 
 const view = ref("home");
 const menuOpen = ref(false);
+// 当前本地用户由 App 持有：任务列表与用户管理都需要它，放在最外层避免循环依赖。
 const currentUser = ref("");
-const users = ref([]);
-const userDraft = ref("");
-const userFormOpen = ref(false);
-const editingUser = ref("");
-const editUserDraft = ref("");
-const noteSize = ref("medium");
-const noteTheme = ref("yellow");
-const notePosition = ref("top-right");
-const autoStartEnabled = ref(false);
-const minimalModeEnabled = ref(false);
-const activeTasks = ref([]);
+
+const { notice, showNotice, closeNotice } = useNotice();
+setErrorReporter((message) => showNotice(message));
+
+const {
+  noteSize,
+  noteTheme,
+  notePosition,
+  autoStartEnabled,
+  minimalModeEnabled,
+  loadSettings,
+  applyInitialLayout,
+  changeNoteSize,
+  changeNoteTheme,
+  changeNotePosition,
+  changeAutoStart,
+  changeMinimalMode,
+} = useNoteSettings({ closeMenu, notify: showNotice });
+
+const {
+  activeTasks,
+  taskListEl,
+  isDragging,
+  dragIndex,
+  dragMoved,
+  refreshActiveTasks,
+  startRowDrag,
+  onRowDragMove,
+  endRowDrag,
+  handleTaskMainClick,
+  persistOrder,
+} = useTaskList({ currentUser, notify: showNotice, openTask });
+
+const {
+  users,
+  userDraft,
+  userFormOpen,
+  editingUser,
+  editUserDraft,
+  hydrate: hydrateUsers,
+  addUser,
+  openUserForm,
+  closeUserForm,
+  switchUser,
+  startEditUser,
+  cancelEditUser,
+  saveUserName,
+  deleteUser,
+  removeUser,
+} = useUsers({
+  currentUser,
+  view,
+  openConfirmation,
+  resetDetailState,
+  refreshActiveTasks,
+});
+
 const archivedTasks = ref([]);
 const selectedTask = ref(null);
 const taskEvents = ref([]);
@@ -598,15 +646,11 @@ const progressDraft = ref("");
 const progressDate = ref("");
 const progressTime = ref("");
 const confirmation = ref(null);
-const { notice, showNotice, closeNotice } = useNotice();
 const expandedHistoryTaskId = ref("");
 const detailEditOpen = ref(false);
 const progressFormOpen = ref(false);
 const detailReturnView = ref("home");
 let recurringRefreshTimer = null;
-let startRefreshTimer = null;
-
-setErrorReporter((message) => showNotice(message));
 
 const viewTitle = computed(() => {
   const titles = {
@@ -632,16 +676,8 @@ const backButtonLabel = computed(() =>
 );
 
 onMounted(async () => {
-  currentUser.value = localStorage.getItem("current-user") || "";
-  users.value = loadUsers();
-  if (currentUser.value && !users.value.includes(currentUser.value)) {
-    users.value.unshift(currentUser.value);
-    saveUsers(users.value);
-  }
-  noteSize.value = localStorage.getItem("note-size") || "medium";
-  noteTheme.value = localStorage.getItem("note-theme") || "yellow";
-  notePosition.value = localStorage.getItem("note-position") || "top-right";
-  minimalModeEnabled.value = localStorage.getItem("minimal-mode") === "true";
+  hydrateUsers();
+  loadSettings();
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("pointerdown", closeExpandedHistoryActions, true);
 
@@ -654,26 +690,14 @@ onMounted(async () => {
     }
   }, 60_000);
 
-  requestAnimationFrame(() => {
-    const layoutUpdates = [
-      invoke("set_note_size", { size: noteSize.value }),
-      invoke("set_note_position", { position: notePosition.value }),
-    ];
-    Promise.allSettled([
-      ...layoutUpdates,
-      refreshAutoStartState(),
-      invoke("set_minimal_mode", { enabled: minimalModeEnabled.value }),
-    ]);
-  });
+  // 首屏渲染后再把外观设置作用到窗口，避免阻塞任务列表加载。
+  applyInitialLayout();
 });
 
 onUnmounted(() => {
   window.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("pointerdown", closeExpandedHistoryActions, true);
-  window.removeEventListener("mousemove", onRowDragMove);
-  window.removeEventListener("mouseup", endRowDrag);
   if (recurringRefreshTimer) window.clearInterval(recurringRefreshTimer);
-  if (startRefreshTimer) window.clearTimeout(startRefreshTimer);
   setErrorReporter(null);
 });
 
@@ -909,197 +933,12 @@ async function openTask(task) {
   view.value = "detail";
 }
 
-async function refreshActiveTasks() {
-  if (!currentUser.value) {
-    activeTasks.value = [];
-    return;
-  }
-  activeTasks.value = await invoke("list_active_tasks", { owner: currentUser.value });
-  scheduleStartRefresh();
-}
-
-// 未来任务到达开始执行时间后自动刷新，使“未开始”立即变更为“进行中”。
-function scheduleStartRefresh() {
-  if (startRefreshTimer) {
-    window.clearTimeout(startRefreshTimer);
-    startRefreshTimer = null;
-  }
-  const now = Date.now();
-  let nearest = Infinity;
-  for (const task of activeTasks.value) {
-    if (taskStatus(task) === "not_started" && task.start_at) {
-      const at = parseStartAtTime(task.start_at);
-      if (at > now && at < nearest) nearest = at;
-    }
-  }
-  if (nearest !== Infinity) {
-    const delay = Math.min(nearest - now, 60_000);
-    startRefreshTimer = window.setTimeout(() => {
-      startRefreshTimer = null;
-      if (currentUser.value) refreshActiveTasks().catch(() => {});
-    }, delay);
-  }
-}
-
-const taskListEl = ref(null);
-const isDragging = ref(false);
-const dragIndex = ref(-1);
-const dragMoved = ref(false);
-const dragStartY = ref(0);
-let suppressClick = false;
-
-function startRowDrag(event, index) {
-  if (event.button !== 0) return;
-  suppressClick = false;
-  dragMoved.value = false;
-  dragStartY.value = event.clientY;
-  isDragging.value = true;
-  dragIndex.value = index;
-  window.addEventListener("mousemove", onRowDragMove);
-  window.addEventListener("mouseup", endRowDrag);
-}
-
-function onRowDragMove(event) {
-  if (!isDragging.value) return;
-  if (!dragMoved.value && Math.abs(event.clientY - dragStartY.value) < 5) return;
-  dragMoved.value = true;
-  const rows = taskListEl.value?.querySelectorAll(".task-row");
-  if (!rows) return;
-  let target = -1;
-  for (let i = 0; i < rows.length; i++) {
-    const rect = rows[i].getBoundingClientRect();
-    if (event.clientY >= rect.top && event.clientY <= rect.bottom) {
-      target = i;
-      break;
-    }
-  }
-  if (target !== -1 && target !== dragIndex.value) {
-    const list = [...activeTasks.value];
-    const [moved] = list.splice(dragIndex.value, 1);
-    list.splice(target, 0, moved);
-    activeTasks.value = list;
-    dragIndex.value = target;
-  }
-}
-
-function endRowDrag() {
-  if (!isDragging.value) return;
-  isDragging.value = false;
-  window.removeEventListener("mousemove", onRowDragMove);
-  window.removeEventListener("mouseup", endRowDrag);
-  if (dragMoved.value) {
-    suppressClick = true;
-    persistOrder();
-  }
-  dragIndex.value = -1;
-  dragMoved.value = false;
-}
-
-async function handleTaskMainClick(task) {
-  if (suppressClick) {
-    suppressClick = false;
-    return;
-  }
-  await openTask(task);
-}
-
-async function persistOrder() {
-  if (!currentUser.value) return;
-  try {
-    await invoke("reorder_tasks", {
-      owner: currentUser.value,
-      orderedIds: activeTasks.value.map((task) => task.id),
-    });
-  } catch (err) {
-    showNotice(err, "保存排序失败");
-    await refreshActiveTasks();
-  }
-}
-
-async function addUser() {
-  const nextUser = normalizeUserName(userDraft.value);
-  if (!nextUser || users.value.includes(nextUser)) return;
-  users.value.push(nextUser);
-  saveUsers(users.value);
-  userDraft.value = "";
-  userFormOpen.value = false;
-  await switchUser(nextUser);
-}
-
-function openUserForm() {
-  userFormOpen.value = true;
-}
-
-function closeUserForm() {
-  userDraft.value = "";
-  userFormOpen.value = false;
-}
-
-async function switchUser(user) {
-  currentUser.value = user;
-  localStorage.setItem("current-user", user);
+// 切换或删除用户时清空详情页残留状态，避免把上一个用户的数据带过来。
+function resetDetailState() {
   selectedTask.value = null;
   taskEvents.value = [];
   milestones.value = [];
   archivedTasks.value = [];
-  editingUser.value = "";
-  view.value = "home";
-  await refreshActiveTasks();
-}
-
-function startEditUser(user) {
-  editingUser.value = user;
-  editUserDraft.value = user;
-}
-
-function cancelEditUser() {
-  editingUser.value = "";
-  editUserDraft.value = "";
-}
-
-async function saveUserName(oldUser) {
-  const nextUser = normalizeUserName(editUserDraft.value);
-  if (!nextUser) return;
-  if (nextUser !== oldUser && users.value.includes(nextUser)) return;
-
-  await invoke("rename_user_data", { oldOwner: oldUser, newOwner: nextUser });
-  users.value = users.value.map((user) => (user === oldUser ? nextUser : user));
-  saveUsers(users.value);
-  if (currentUser.value === oldUser) {
-    currentUser.value = nextUser;
-    localStorage.setItem("current-user", nextUser);
-  }
-  cancelEditUser();
-  await refreshActiveTasks();
-}
-
-async function deleteUser(user) {
-  openConfirmation(
-    "删除用户",
-    `确定删除用户“${user}”吗？删除后该用户的待办、历史任务和生命周期记录都将被永久删除，不能恢复。`,
-    () => removeUser(user),
-  );
-}
-
-async function removeUser(user) {
-  await invoke("delete_user_data", { owner: user });
-  users.value = users.value.filter((item) => item !== user);
-  saveUsers(users.value);
-  if (currentUser.value === user) {
-    currentUser.value = users.value[0] || "";
-    if (currentUser.value) {
-      localStorage.setItem("current-user", currentUser.value);
-      view.value = "home";
-    } else {
-      localStorage.removeItem("current-user");
-      view.value = "users";
-    }
-  }
-  selectedTask.value = null;
-  taskEvents.value = [];
-  milestones.value = [];
-  archivedTasks.value = [];
-  await refreshActiveTasks();
 }
 
 async function createTask() {
@@ -1635,56 +1474,6 @@ async function confirmAction() {
     await action();
   } catch (err) {
     showNotice(err, "操作失败，请稍后重试");
-  }
-}
-
-async function changeNoteSize(size) {
-  noteSize.value = size;
-  localStorage.setItem("note-size", size);
-  await invoke("set_note_size", { size });
-  await invoke("set_note_position", { position: notePosition.value });
-}
-
-function changeNoteTheme(theme) {
-  noteTheme.value = theme;
-  localStorage.setItem("note-theme", theme);
-}
-
-async function changeNotePosition(position) {
-  notePosition.value = position;
-  localStorage.setItem("note-position", position);
-  menuOpen.value = false;
-  await invoke("set_note_position", { position });
-}
-
-async function changeAutoStart(enabled) {
-  const previous = autoStartEnabled.value;
-  autoStartEnabled.value = enabled;
-  try {
-    autoStartEnabled.value = await invoke("set_auto_start_enabled", { enabled });
-  } catch (err) {
-    autoStartEnabled.value = previous;
-    showNotice(err, "设置开机自启动失败");
-  }
-}
-
-async function changeMinimalMode(enabled) {
-  const previous = minimalModeEnabled.value;
-  minimalModeEnabled.value = enabled;
-  try {
-    minimalModeEnabled.value = await invoke("set_minimal_mode", { enabled });
-    localStorage.setItem("minimal-mode", String(minimalModeEnabled.value));
-  } catch (err) {
-    minimalModeEnabled.value = previous;
-    showNotice(err, "设置极简模式失败");
-  }
-}
-
-async function refreshAutoStartState() {
-  try {
-    autoStartEnabled.value = await invoke("is_auto_start_enabled");
-  } catch {
-    autoStartEnabled.value = false;
   }
 }
 
