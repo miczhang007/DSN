@@ -600,12 +600,27 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { useNotice } from "./composables/useNotice.js";
+import {
+  compareEventTime,
+  dateTimeToIso,
+  defaultStartTime,
+  formatDeadline,
+  formatTime,
+  localDateInputValue,
+  nowLocalParts,
+  parseStartAtTime,
+  splitIsoForInput,
+} from "./lib/datetime.js";
+import { setErrorReporter } from "./lib/errors.js";
+import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
+import { loadUsers, normalizeUserName, saveUsers } from "./lib/user-storage.js";
 
 const repositoryUrl = "https://github.com/miczhang007/DSN";
 const privacyPolicyUrl = "https://github.com/miczhang007/DSN/blob/main/PRIVACY.md";
 const productName = "桌面便签";
 const productFullName = "桌面便签 / StickyNote";
-const versionLabel = "v1.4.2 - 2026-09-04 10:08";
+const versionLabel = "v1.4.2 - 2026-11-02 15:27";
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
@@ -686,14 +701,15 @@ const progressDraft = ref("");
 const progressDate = ref("");
 const progressTime = ref("");
 const confirmation = ref(null);
-const notice = ref(null);
+const { notice, showNotice, closeNotice } = useNotice();
 const expandedHistoryTaskId = ref("");
 const detailEditOpen = ref(false);
 const progressFormOpen = ref(false);
 const detailReturnView = ref("home");
 let recurringRefreshTimer = null;
 let startRefreshTimer = null;
-let noticeTimer = null;
+
+setErrorReporter((message) => showNotice(message));
 
 const viewTitle = computed(() => {
   const titles = {
@@ -723,7 +739,7 @@ onMounted(async () => {
   users.value = loadUsers();
   if (currentUser.value && !users.value.includes(currentUser.value)) {
     users.value.unshift(currentUser.value);
-    saveUsers();
+    saveUsers(users.value);
   }
   noteSize.value = localStorage.getItem("note-size") || "medium";
   noteTheme.value = localStorage.getItem("note-theme") || "yellow";
@@ -761,7 +777,7 @@ onUnmounted(() => {
   window.removeEventListener("mouseup", endRowDrag);
   if (recurringRefreshTimer) window.clearInterval(recurringRefreshTimer);
   if (startRefreshTimer) window.clearTimeout(startRefreshTimer);
-  if (noticeTimer) window.clearTimeout(noticeTimer);
+  setErrorReporter(null);
 });
 
 function toggleMenu() {
@@ -1107,7 +1123,7 @@ async function addUser() {
   const nextUser = normalizeUserName(userDraft.value);
   if (!nextUser || users.value.includes(nextUser)) return;
   users.value.push(nextUser);
-  saveUsers();
+  saveUsers(users.value);
   userDraft.value = "";
   userFormOpen.value = false;
   await switchUser(nextUser);
@@ -1151,7 +1167,7 @@ async function saveUserName(oldUser) {
 
   await invoke("rename_user_data", { oldOwner: oldUser, newOwner: nextUser });
   users.value = users.value.map((user) => (user === oldUser ? nextUser : user));
-  saveUsers();
+  saveUsers(users.value);
   if (currentUser.value === oldUser) {
     currentUser.value = nextUser;
     localStorage.setItem("current-user", nextUser);
@@ -1171,7 +1187,7 @@ async function deleteUser(user) {
 async function removeUser(user) {
   await invoke("delete_user_data", { owner: user });
   users.value = users.value.filter((item) => item !== user);
-  saveUsers();
+  saveUsers(users.value);
   if (currentUser.value === user) {
     currentUser.value = users.value[0] || "";
     if (currentUser.value) {
@@ -1272,45 +1288,6 @@ function toggleEditFutureTask() {
   if (editDraft.isFuture && !editDraft.startAt) {
     editDraft.startAt = defaultStartTime();
   }
-}
-
-function defaultStartTime() {
-  const now = new Date();
-  now.setDate(now.getDate() + 1);
-  const offset = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
-}
-
-// 日期（YYYY-MM-DD）+ 可选时间（HH:MM）转为存储值：未指定时间时仅存日期。
-function dateTimeToIso(date, time) {
-  if (!date) return null;
-  if (!time) return date;
-  return new Date(`${date}T${time}`).toISOString();
-}
-
-// 当前本地时间拆分为日期与时间（用于预填完成时间/记录时间）。
-function nowLocalParts() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60000;
-  const local = new Date(now.getTime() - offset).toISOString();
-  return { date: local.slice(0, 10), time: local.slice(11, 16) };
-}
-
-// 存储值拆分为控件回显的日期与可选时间；仅日期时时间为空。
-function splitIsoForInput(value) {
-  if (!value) return { date: "", time: "" };
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return { date: value, time: "" };
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset() * 60000;
-  const local = new Date(date.getTime() - offset).toISOString();
-  return { date: local.slice(0, 10), time: local.slice(11, 16) };
-}
-
-// 解析开始执行时间为本地时间戳；仅日期按本地当天零点。
-function parseStartAtTime(value) {
-  if (!value) return NaN;
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
-  return new Date(normalized).getTime();
 }
 
 function toggleHistoryActions(taskId) {
@@ -1764,26 +1741,6 @@ async function confirmAction() {
   }
 }
 
-function messageFromError(error, fallback) {
-  if (typeof error === "string" && error.trim()) return error;
-  if (error instanceof Error && error.message) return error.message;
-  return fallback;
-}
-
-function showNotice(error, fallback) {
-  notice.value = { message: messageFromError(error, fallback) };
-  if (noticeTimer) window.clearTimeout(noticeTimer);
-  noticeTimer = window.setTimeout(closeNotice, 5000);
-}
-
-function closeNotice() {
-  notice.value = null;
-  if (noticeTimer) {
-    window.clearTimeout(noticeTimer);
-    noticeTimer = null;
-  }
-}
-
 async function changeNoteSize(size) {
   noteSize.value = size;
   localStorage.setItem("note-size", size);
@@ -1844,143 +1801,5 @@ async function openExternal(url) {
   } catch (err) {
     showNotice(err, "打开链接失败");
   }
-}
-
-function formatDeadline(value) {
-  if (!value) return "无截止时间";
-  // 仅日期（未指定具体时间）时只展示日期
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00`).toLocaleString("zh-CN", {
-      month: "numeric",
-      day: "numeric",
-    });
-  }
-  const date = new Date(value);
-  return date.toLocaleString("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatTime(value) {
-  if (!value) return "";
-  // 仅日期（未指定具体时间）时只展示日期
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00`).toLocaleString("zh-CN", {
-      month: "numeric",
-      day: "numeric",
-    });
-  }
-  return new Date(value).toLocaleString("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-// 生命周期排序：仅日期事件视为该日末尾，排在当天有具体时间的事件之后。
-function compareEventTime(a, b) {
-  const ms = (value) => {
-    if (!value) return 0;
-    return /^\d{4}-\d{2}-\d{2}$/.test(value)
-      ? new Date(`${value}T23:59:59`).getTime()
-      : new Date(value).getTime();
-  };
-  const diff = ms(a.created_at) - ms(b.created_at);
-  return diff !== 0 ? diff : a.id - b.id;
-}
-
-function localDateInputValue() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
-}
-
-function taskStatus(task) {
-  return task.status || fallbackTaskStatus(task);
-}
-
-function fallbackTaskStatus(task) {
-  if (task.archived_at) return task.completed_at ? "completed" : "uncompleted";
-  if (task.completed_at) return "completed";
-  if (task.suspended_at) return "suspended";
-  if (task.start_at && parseStartAtTime(task.start_at) > Date.now()) return "not_started";
-  if (task.started_at || (task.start_at && !task.reactivated_at)) return "in_progress";
-  return "pending";
-}
-
-function taskStatusText(task) {
-  const labels = {
-    pending: "待完成",
-    not_started: "未开始",
-    in_progress: "进行中",
-    suspended: "已挂起",
-    completed: "已完成",
-    uncompleted: "未完成",
-    deleted: "已删除",
-  };
-  return labels[taskStatus(task)] || "待完成";
-}
-
-function eventText(event) {
-  const labels = {
-    created: "创建任务",
-    title_changed: `任务内容：${formatTextValue(event.before_value)} -> ${formatTextValue(event.after_value)}`,
-    deadline_changed: `截止时间：${formatDeadline(event.before_value)} -> ${formatDeadline(event.after_value)}`,
-    urgent_changed: `紧急标记：${formatBool(event.before_value)} -> ${formatBool(event.after_value)}`,
-    start_at_changed: `任务开始执行时间：${formatTimeValue(event.before_value)} -> ${formatTimeValue(event.after_value)}`,
-    started: "任务开始执行",
-    suspended: "挂起任务",
-    activated: "激活任务",
-    progress_updated: formatTextValue(event.after_value),
-    milestone_completed: `完成节点：${formatTextValue(event.after_value)}`,
-    milestone_completed_undone: `撤销完成节点：${formatTextValue(event.after_value)}`,
-    milestone_created: `新增节点：${formatTextValue(event.after_value)}`,
-    milestone_renamed: `节点改名：${formatTextValue(event.before_value)} -> ${formatTextValue(event.after_value)}`,
-    milestone_planned_changed: `节点计划时间：${formatDeadline(event.before_value)} -> ${formatDeadline(event.after_value)}`,
-    milestone_deleted: `删除节点：${formatTextValue(event.before_value)}`,
-    completed: "完成任务",
-    archived: event.after_value === "auto" ? "系统自动归档（隔天）" : "归档任务",
-    completion_undone: "撤销完成",
-    archive_undone: "撤销归档",
-    deleted: "删除任务",
-  };
-  return labels[event.event_type] || event.event_type;
-}
-
-function formatTimeValue(value) {
-  if (!value) return "未设置";
-  return formatDeadline(value);
-}
-
-function formatBool(value) {
-  return value === "true" || value === "1" ? "是" : "否";
-}
-
-function formatTextValue(value) {
-  if (!value) return "无";
-  return value;
-}
-
-function loadUsers() {
-  try {
-    const savedUsers = JSON.parse(localStorage.getItem("users") || "[]");
-    return Array.isArray(savedUsers)
-      ? savedUsers.map(normalizeUserName).filter(Boolean)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveUsers() {
-  localStorage.setItem("users", JSON.stringify(users.value));
-}
-
-function normalizeUserName(value) {
-  return String(value || "").trim();
 }
 </script>

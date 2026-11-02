@@ -16,3 +16,7 @@ src-tauri/target/
 
 .DS_Store
 Thumbs.db
+
+# 私有云服务项目：本地联调可放在工作区内，但始终由独立私有 Git 仓库管理，
+# 公开 MIT 客户端仓库不得追踪云服务、密钥或运营资料。
+sticky-note-cloud-api/
