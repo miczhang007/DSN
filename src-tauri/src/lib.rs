@@ -1727,6 +1727,13 @@ fn record_task_start_events(conn: &Connection, owner: &str) -> Result<(), String
 }
 
 fn refresh_recurring_tasks(conn: &Connection, owner: &str) -> Result<(), String> {
+    // 时间基准：调度（今天、生成时间）一律用本地时间，事件时间戳用 UTC，
+    // 二者分工固定——本地日期决定"哪天生成"，UTC 只用于记录与展示换算。
+    //
+    // 跨日判定用 substr(occurrence_date, 1, 10) 与 YYYY-MM-DD 做字符串比较：
+    // 零填充 ISO 日期的字典序等于时间序，因此该比较正确且可走索引。
+    // 这条不变式由 occurrence_date_prefix_ordering_matches_calendar 测试锁定，
+    // 一旦日期格式变化会被测试发现。
     let today = Local::now().date_naive();
     let today_string = today.to_string();
     let now = now_string();
