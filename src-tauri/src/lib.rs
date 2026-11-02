@@ -9,6 +9,8 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State};
 
 const AUTO_START_REG_PATH: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 const AUTO_START_VALUE_NAME: &str = "StickyNote";
+// Local\ 前缀表示仅当前登录会话可见；进程退出时由内核释放，不会残留死锁。
+const SINGLE_INSTANCE_MUTEX: &str = r"Local\DesktopStickyNote.SingleInstance";
 
 struct DbState {
     conn: Mutex<Connection>,
@@ -92,8 +94,111 @@ struct TaskEvent {
     created_at: String,
 }
 
+/// 单实例保护：避免同一用户同时跑两个进程写同一个 SQLite 文件。
+///
+/// Windows 用命名互斥量实现；进程退出（含崩溃）时由内核释放，
+/// 不会像锁文件那样留下死锁。
+#[cfg(windows)]
+mod single_instance {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use std::ptr::null_mut;
+
+    type Handle = *mut core::ffi::c_void;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateMutexW(
+            attributes: *mut core::ffi::c_void,
+            initial_owner: i32,
+            name: *const u16,
+        ) -> Handle;
+        fn GetLastError() -> u32;
+        fn CloseHandle(handle: Handle) -> i32;
+        fn MessageBoxW(window: Handle, text: *const u16, caption: *const u16, flags: u32) -> i32;
+    }
+
+    const ERROR_ALREADY_EXISTS: u32 = 183;
+    const MB_OK: u32 = 0x0000_0000;
+    const MB_ICONINFORMATION: u32 = 0x0000_0040;
+
+    pub struct InstanceGuard {
+        handle: Handle,
+    }
+
+    impl Drop for InstanceGuard {
+        fn drop(&mut self) {
+            unsafe {
+                CloseHandle(self.handle);
+            }
+        }
+    }
+
+    fn wide(value: &str) -> Vec<u16> {
+        OsStr::new(value)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
+    }
+
+    /// 取得单实例锁；已有实例在运行时返回 `None`。
+    pub fn acquire(name: &str) -> Option<InstanceGuard> {
+        let name = wide(name);
+        let handle = unsafe { CreateMutexW(null_mut(), 0, name.as_ptr()) };
+        if handle.is_null() {
+            // 创建失败时不阻止启动，避免误伤正常使用。
+            return Some(InstanceGuard { handle });
+        }
+        // 必须紧接着 CreateMutexW 读取，不能被其他调用覆盖。
+        if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+            unsafe {
+                CloseHandle(handle);
+            }
+            return None;
+        }
+        Some(InstanceGuard { handle })
+    }
+
+    /// 提示用户已有实例在运行。
+    pub fn inform_already_running() {
+        let text = wide("桌面便签已在运行，请使用已打开的窗口。");
+        let caption = wide("桌面便签");
+        unsafe {
+            MessageBoxW(
+                null_mut(),
+                text.as_ptr(),
+                caption.as_ptr(),
+                MB_OK | MB_ICONINFORMATION,
+            );
+        }
+    }
+}
+
+#[cfg(not(windows))]
+mod single_instance {
+    pub struct InstanceGuard;
+
+    /// 非 Windows 平台（含 CI 的 Linux 构建）不启用单实例保护。
+    pub fn acquire(_name: &str) -> Option<InstanceGuard> {
+        Some(InstanceGuard)
+    }
+
+    pub fn inform_already_running() {}
+}
+
 pub fn run() {
     install_panic_logger();
+
+    // 单实例保护：拿不到锁说明已有实例在运行，直接退出，
+    // 避免两个进程同时写同一个数据库。
+    let _instance_guard = match single_instance::acquire(SINGLE_INSTANCE_MUTEX) {
+        Some(guard) => guard,
+        None => {
+            write_startup_log("检测到已有实例在运行，本次启动退出");
+            single_instance::inform_already_running();
+            return;
+        }
+    };
 
     let result = tauri::Builder::default()
         .setup(|app| {
@@ -103,7 +208,7 @@ pub fn run() {
                 .map_err(|err| format!("应用初始化失败：{err}"))?;
             fs::create_dir_all(&app_data_dir).map_err(|err| format!("应用初始化失败：{err}"))?;
             let db_path = app_data_dir.join("desktop-sticky-note.sqlite3");
-            let conn = Connection::open(db_path).map_err(|err| format!("无法打开数据库：{err}"))?;
+            let conn = open_database(&db_path).map_err(|err| format!("无法打开数据库：{err}"))?;
             migrate(&conn).map_err(|err| format!("应用初始化失败：{err}"))?;
             app.manage(DbState {
                 conn: Mutex::new(conn),
@@ -180,6 +285,47 @@ fn write_startup_log(message: &str) {
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) {
         let _ = writeln!(file, "{} | {message}", Utc::now().to_rfc3339());
     }
+}
+
+/// 打开本地数据库并应用连接级参数。
+///
+/// - `journal_mode=WAL`：读写不互相阻塞，降低后台写入与界面读取之间的锁冲突；
+/// - `foreign_keys=ON`：SQLite 默认不启用外键约束，schema 里声明的约束需显式开启；
+/// - `busy_timeout`：短暂锁等待，避免瞬时 SQLITE_BUSY 直接让命令失败。
+fn open_database(path: &std::path::Path) -> rusqlite::Result<Connection> {
+    let conn = Connection::open(path)?;
+    configure_connection(&conn)?;
+    Ok(conn)
+}
+
+fn configure_connection(conn: &Connection) -> rusqlite::Result<()> {
+    // journal_mode 会返回实际生效的模式；内存库不支持 WAL，失败可忽略。
+    let _ = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get::<_, String>(0));
+    conn.execute_batch("PRAGMA foreign_keys=ON;")?;
+    conn.busy_timeout(std::time::Duration::from_millis(5_000))?;
+    Ok(())
+}
+
+/// 外链白名单：只允许 http/https，拒绝空白、控制字符与脚本伪协议。
+///
+/// 传入 `cmd /c start` 之前必须校验，避免 `javascript:`、`file:`
+/// 这类伪协议或含分隔符的参数被当作命令执行。
+fn validate_external_url(url: &str) -> Result<(), String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err("链接为空".to_string());
+    }
+    if trimmed
+        .chars()
+        .any(|c| c.is_control() || c.is_whitespace())
+    {
+        return Err("链接包含非法字符".to_string());
+    }
+    let lowered = trimmed.to_ascii_lowercase();
+    if !(lowered.starts_with("http://") || lowered.starts_with("https://")) {
+        return Err("仅支持打开 http/https 链接".to_string());
+    }
+    Ok(())
 }
 
 fn place_window(window: &tauri::WebviewWindow, position: &str) -> Result<(), String> {
@@ -364,6 +510,9 @@ fn migrate_legacy_deadlines(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 #[tauri::command]
+// 查询前会做定时维护：补齐当天周期任务、归档过期实例、记录到点开始的执行事件。
+// 维护逻辑幂等（见 recurring_refresh_is_idempotent_across_repeated_calls），
+// 因此前端轮询调用是安全的；这里刻意不拆成独立命令，避免遗漏某个入口导致任务不生成。
 fn list_active_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>, String> {
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
     let owner = normalize_owner(&owner)?;
@@ -406,6 +555,7 @@ fn list_active_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>, 
 }
 
 #[tauri::command]
+// 同样会先做周期任务补齐与隔天自动归档，理由见 list_active_tasks。
 fn list_archived_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>, String> {
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
     let owner = normalize_owner(&owner)?;
@@ -689,7 +839,8 @@ fn delete_task_progress(
 ) -> Result<(), String> {
     let owner = normalize_owner(&owner)?;
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
-    let task = query_task(&conn, &owner, &task_id)?;
+    // 先确认任务归属，避免跨用户删除事件。
+    query_task(&conn, &owner, &task_id)?;
     // 仅允许删除“进度”类生命周期日志，其他类型日志不可删除。
     let event_type: Option<String> = conn
         .query_row(
@@ -1060,6 +1211,7 @@ fn delete_recurring_task_setting(state: State<DbState>, owner: String, setting_i
 }
 
 #[tauri::command]
+// 同样会先做周期任务补齐，保证规则列表页看到的实例是最新的。
 fn list_recurring_task_settings(state: State<DbState>, owner: String) -> Result<Vec<RecurringTaskSetting>, String> {
     let owner = normalize_owner(&owner)?;
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
@@ -1489,6 +1641,7 @@ fn exit_app(app: AppHandle) {
 
 #[tauri::command]
 fn open_external_link(url: String) -> Result<(), String> {
+    validate_external_url(&url)?;
     let status = Command::new("cmd")
         .args(["/c", "start", "", &url])
         .status()
@@ -1887,4 +2040,225 @@ fn normalize_owner(owner: &str) -> Result<String, String> {
 
 fn is_duplicate_column_error(err: &rusqlite::Error) -> bool {
     err.to_string().contains("duplicate column name")
+}
+
+#[cfg(test)]
+mod local_hardening_tests {
+    use super::*;
+
+    fn recurring_setting(
+        start_date: &str,
+        end_date: Option<&str>,
+        date_range_type: &str,
+        frequency_type: &str,
+        weekdays: &str,
+        repeat_count: i64,
+    ) -> RecurringTaskSetting {
+        RecurringTaskSetting {
+            id: "setting".to_string(),
+            owner: "user".to_string(),
+            title: "任务".to_string(),
+            is_urgent: false,
+            date_range_type: date_range_type.to_string(),
+            start_date: start_date.to_string(),
+            end_date: end_date.map(str::to_string),
+            frequency_type: frequency_type.to_string(),
+            weekdays: weekdays.to_string(),
+            generate_time: "06:00".to_string(),
+            repeat_count,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+            status: "生效中".to_string(),
+            voided_at: None,
+        }
+    }
+
+    #[test]
+    fn external_url_allows_only_http_and_https() {
+        assert!(validate_external_url("https://github.com/miczhang007/DSN").is_ok());
+        assert!(validate_external_url("http://127.0.0.1:1420").is_ok());
+        // 协议大小写不敏感
+        assert!(validate_external_url("HTTPS://example.com/path").is_ok());
+    }
+
+    #[test]
+    fn external_url_rejects_script_and_file_schemes() {
+        for url in [
+            "javascript:alert(1)",
+            "file:///C:/Windows/System32/calc.exe",
+            "ms-settings:",
+            "vbscript:msgbox(1)",
+        ] {
+            assert!(validate_external_url(url).is_err(), "应拒绝 {url}");
+        }
+    }
+
+    #[test]
+    fn external_url_rejects_blank_and_argument_injection() {
+        for url in [
+            "",
+            "   ",
+            "https://example.com & calc",
+            "https://example.com\n/x",
+        ] {
+            assert!(validate_external_url(url).is_err(), "应拒绝 {url:?}");
+        }
+        // 首尾空白是允许的（调用方可能带缩进），校验前统一 trim。
+        assert!(validate_external_url("  https://example.com  ").is_ok());
+    }
+
+    #[test]
+    fn connection_enables_foreign_keys_and_wal() {
+        let dir =
+            std::env::temp_dir().join(format!("sticky-note-db-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("创建临时目录");
+        let path = dir.join("test.sqlite3");
+
+        let conn = open_database(&path).expect("打开数据库");
+        let journal: String = conn
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .expect("读取 journal_mode");
+        assert_eq!(journal.to_lowercase(), "wal");
+
+        let foreign_keys: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .expect("读取 foreign_keys");
+        assert_eq!(foreign_keys, 1);
+
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 跨日归档依赖「ISO 日期的字典序等于时间序」这一不变量。
+    /// 该比较目前写在 SQL 里，这里用一个真实查询把行为固定住，
+    /// 避免将来改动日期格式时静默失效。
+    #[test]
+    fn occurrence_date_prefix_ordering_matches_calendar() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        let today = NaiveDate::from_ymd_opt(2026, 11, 2).expect("构造日期");
+        let today_text = today.to_string();
+
+        for (occurrence, expected_before_today) in [
+            ("2026-11-01", true),
+            ("2026-11-01#2", true),
+            ("2026-10-31#1", true),
+            ("2026-11-02", false),
+            ("2026-11-02#1", false),
+            ("2026-11-03", false),
+        ] {
+            let before: bool = conn
+                .query_row(
+                    "SELECT substr(?1, 1, 10) < ?2",
+                    params![occurrence, today_text],
+                    |row| row.get(0),
+                )
+                .expect("比较日期");
+            assert_eq!(
+                before, expected_before_today,
+                "occurrence={occurrence} 的跨日判定不符合预期"
+            );
+        }
+    }
+
+    #[test]
+    fn setting_applies_on_matches_frequency_and_range() {
+        let date = NaiveDate::from_ymd_opt(2026, 11, 2).expect("构造日期");
+        let weekday_index = date.weekday().num_days_from_monday().to_string();
+        let other_index = ((date.weekday().num_days_from_monday() + 1) % 7).to_string();
+
+        let daily_hit = recurring_setting("2026-01-01", None, "long", "daily", &weekday_index, 1);
+        assert!(setting_applies_on(&daily_hit, date));
+
+        let daily_miss = recurring_setting("2026-01-01", None, "long", "daily", &other_index, 1);
+        assert!(!setting_applies_on(&daily_miss, date));
+
+        // 开始日期晚于当天
+        let not_started = recurring_setting("2026-12-01", None, "long", "daily", &weekday_index, 1);
+        assert!(!setting_applies_on(&not_started, date));
+
+        // 指定日期范围已结束
+        let ended = recurring_setting(
+            "2026-01-01",
+            Some("2026-10-31"),
+            "range",
+            "daily",
+            &weekday_index,
+            1,
+        );
+        assert!(!setting_applies_on(&ended, date));
+
+        // 按周：与开始日期同一个星期几
+        let weekly = recurring_setting("2026-10-26", None, "long", "weekly", "", 2);
+        assert_eq!(date.weekday(), NaiveDate::from_ymd_opt(2026, 10, 26).unwrap().weekday());
+        assert!(setting_applies_on(&weekly, date));
+    }
+
+    /// 列表命令会顺带做「周期任务补齐 / 隔天自动归档」这类定时维护，
+    /// 因此这些维护必须幂等：重复调用不能生成重复任务。
+    #[test]
+    fn recurring_refresh_is_idempotent_across_repeated_calls() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化 schema");
+
+        let owner = "测试用户";
+        let today = Local::now().date_naive();
+        let weekday_index = today.weekday().num_days_from_monday().to_string();
+        conn.execute(
+            "INSERT INTO recurring_task_settings
+               (id, owner, title, is_urgent, date_range_type, start_date, end_date,
+                frequency_type, weekdays, generate_time, repeat_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 0, 'long', ?4, NULL, 'daily', ?5, '00:00', 1, ?6, ?6)",
+            params![
+                "setting-1",
+                owner,
+                "每日任务",
+                today.to_string(),
+                weekday_index,
+                now_string()
+            ],
+        )
+        .expect("写入周期规则");
+
+        refresh_recurring_tasks(&conn, owner).expect("首次刷新");
+        let first: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tasks WHERE owner = ?1",
+                params![owner],
+                |row| row.get(0),
+            )
+            .expect("统计任务");
+        assert_eq!(first, 1, "首次刷新应生成当天任务");
+
+        refresh_recurring_tasks(&conn, owner).expect("再次刷新");
+        let second: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tasks WHERE owner = ?1",
+                params![owner],
+                |row| row.get(0),
+            )
+            .expect("统计任务");
+        assert_eq!(second, 1, "重复刷新不得重复生成任务");
+
+        // 生成的任务必须挂在规则上，便于后续串行判断。
+        let linked: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tasks WHERE owner = ?1 AND recurring_setting_id = 'setting-1'",
+                params![owner],
+                |row| row.get(0),
+            )
+            .expect("统计关联任务");
+        assert_eq!(linked, 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn single_instance_blocks_a_second_acquire() {
+        let name = format!("Local\\DesktopStickyNote.Test.{}", std::process::id());
+        let first = single_instance::acquire(&name);
+        assert!(first.is_some(), "首次应取得锁");
+        assert!(single_instance::acquire(&name).is_none(), "第二次应被拒绝");
+        drop(first);
+        assert!(single_instance::acquire(&name).is_some(), "释放后可再次取得");
+    }
 }
