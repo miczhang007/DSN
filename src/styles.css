@@ -408,33 +408,6 @@ h1 {
   box-shadow: 0 0 0 2px rgba(107, 84, 34, 0.12);
 }
 
-.theme-swatch {
-  width: 10px;
-  height: 10px;
-  border: 1px solid rgba(74, 55, 24, 0.18);
-  border-radius: 50%;
-}
-
-.theme-swatch-yellow {
-  background: #f8e8a9;
-}
-
-.theme-swatch-blue {
-  background: #cce4f7;
-}
-
-.theme-swatch-green {
-  background: #d7edc6;
-}
-
-.theme-swatch-pink {
-  background: #f7d0dc;
-}
-
-.theme-swatch-white {
-  background: #f7f4e9;
-}
-
 .content {
   position: absolute;
   top: 58px;
@@ -899,13 +872,6 @@ h1 {
   display: flex;
   gap: 3px;
   align-items: center;
-}
-
-.form-hint {
-  margin: -5px 0 14px;
-  color: rgba(64, 51, 27, 0.54);
-  font-size: 12px;
-  line-height: 1.45;
 }
 
 .users-view {

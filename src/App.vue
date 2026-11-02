@@ -708,6 +708,7 @@ const {
   historyAction,
   canUndoTask,
   deleteArchivedTask,
+  loadArchivedTasks,
 } = useHistory({
   currentUser,
   view,
@@ -825,7 +826,7 @@ async function handleBack() {
   if (view.value === "detail") {
     if (detailReturnView.value === "history") {
       view.value = "history";
-      archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
+      await loadArchivedTasks();
     } else if (detailReturnView.value === "recurring-setting") {
       view.value = "recurring-setting";
     } else {
