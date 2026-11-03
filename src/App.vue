@@ -600,7 +600,7 @@ import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 23:26";
+const versionLabel = "v1.5.0 - 2026-11-03 23:31";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -826,11 +826,23 @@ const backButtonLabel = computed(() =>
   shouldExitFromCategoryManager.value ? "退出" : "返回",
 );
 
+let tabsResizeObserver = null;
+
 onMounted(async () => {
   hydrateCategories();
   loadSettings();
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("pointerdown", closeExpandedHistoryActions, true);
+
+  // 标签宽度会随字体加载、窗口尺寸变化，用 ResizeObserver 实时判断是否需要左右切换
+  if (typeof ResizeObserver !== "undefined" && categoryTabsEl.value) {
+    tabsResizeObserver = new ResizeObserver(() => updateTabScrollState());
+    tabsResizeObserver.observe(categoryTabsEl.value);
+  }
+  if (document.fonts?.ready?.then) {
+    document.fonts.ready.then(() => updateTabScrollState());
+  }
+  window.addEventListener("resize", updateTabScrollState);
 
   if (currentCategory.value) {
     await refreshActiveTasks();
@@ -850,6 +862,9 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("pointerdown", closeExpandedHistoryActions, true);
+  window.removeEventListener("resize", updateTabScrollState);
+  tabsResizeObserver?.disconnect();
+  tabsResizeObserver = null;
   if (recurringRefreshTimer) window.clearInterval(recurringRefreshTimer);
   setErrorReporter(null);
 });
@@ -875,8 +890,10 @@ function updateTabScrollState() {
     canScrollTabsRight.value = false;
     return;
   }
-  canScrollTabsLeft.value = el.scrollLeft > 4;
-  canScrollTabsRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+  // 留 8px 容差，避免 1~3px 的取整误差导致箭头忽隐忽现
+  const overflow = el.scrollWidth - el.clientWidth;
+  canScrollTabsLeft.value = overflow > 8 && el.scrollLeft > 4;
+  canScrollTabsRight.value = overflow > 8 && el.scrollLeft < overflow - 8;
 }
 
 function scrollTabs(direction) {
