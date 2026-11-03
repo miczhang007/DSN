@@ -264,13 +264,14 @@ h1 {
 
 .category-tabs {
   position: absolute;
-  top: 62px;
+  top: 54px;
   right: 26px;
   left: 26px;
   display: flex;
   gap: 9px;
   align-items: flex-end;
-  padding-bottom: 4px;
+  /* 顶部留出上浮空间：overflow-x 会把垂直溢出裁掉，选中标签的描边会被切 */
+  padding: 8px 0 4px;
   overflow-x: auto;
   scrollbar-width: none;
   z-index: 3;
