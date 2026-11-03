@@ -769,6 +769,20 @@ describe("桌面便签核心交互", () => {
     expect(wrapper.find(".app-shell").classes()).toContain("font-xingshu");
   });
 
+  it("设置面板可自定义右下角签名", async () => {
+    localStorage.setItem("current-category", "测试分类");
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.vm.$nextTick();
+    const input = wrapper.find(".signature-input");
+    await input.setValue("老张的便签");
+    await wrapper.vm.$nextTick();
+    expect(localStorage.getItem("note-signature")).toBe("老张的便签");
+    expect(wrapper.find(".brand-mark").text()).toBe("老张的便签");
+  });
+
   it("老版本的“用户”数据会自动迁移为分类", async () => {
     localStorage.setItem("current-user", "旧昵称");
     localStorage.setItem("users", JSON.stringify(["旧昵称", "家人"]));

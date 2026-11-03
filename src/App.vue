@@ -41,6 +41,7 @@
         :note-size="noteSize"
         :note-theme="noteTheme"
         :note-font="noteFont"
+        :note-signature="noteSignature"
         :auto-start-enabled="autoStartEnabled"
         @history="openHistory"
         @recurring-settings="openRecurringSettings"
@@ -50,6 +51,7 @@
         @change-size="changeNoteSize"
         @change-theme="changeNoteTheme"
         @change-font="changeNoteFont"
+        @change-signature="changeSignature"
         @change-auto-start="changeAutoStart"
         @minimize="minimizeWindow"
       />
@@ -526,7 +528,7 @@
 
       <footer class="note-footer">
         <span v-if="currentCategory" class="category-count">{{ activeTasks.length }} 项</span>
-        <span class="brand-mark">{{ productName }}</span>
+        <span class="brand-mark">{{ noteSignature || productName }}</span>
       </footer>
     </section>
   </main>
@@ -564,7 +566,7 @@ import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 22:24";
+const versionLabel = "v1.5.0 - 2026-11-03 22:29";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -583,6 +585,7 @@ const {
   noteSize,
   noteTheme,
   noteFont,
+  noteSignature,
   notePosition,
   autoStartEnabled,
   loadSettings,
@@ -590,6 +593,7 @@ const {
   changeNoteSize,
   changeNoteTheme,
   changeNoteFont,
+  changeSignature,
   changeNotePosition,
   changeAutoStart,
 } = useNoteSettings({ closeMenu, notify: showNotice });

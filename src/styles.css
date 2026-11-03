@@ -1579,3 +1579,28 @@ h1 {
   border-top: 1.2px solid rgba(126, 100, 44, 0.14);
   border-radius: 0;
 }
+
+.signature-input {
+  width: 100%;
+  padding: 7px 10px;
+  color: var(--ink);
+  font-family: var(--font-hand);
+  font-weight: var(--hand-weight, 600);
+  font-size: 15px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1.2px solid rgba(126, 100, 44, 0.22);
+  border-radius: 8px;
+  outline: none;
+}
+
+.signature-input:focus {
+  border-color: rgba(126, 100, 44, 0.48);
+  box-shadow: 0 0 0 3px rgba(126, 100, 44, 0.1);
+}
+
+.brand-mark {
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

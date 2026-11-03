@@ -39,6 +39,18 @@
       </div>
 
       <div class="menu-group">
+        <span class="field-label">自定义签名</span>
+        <input
+          class="signature-input"
+          :value="noteSignature"
+          type="text"
+          maxlength="20"
+          placeholder="留空显示产品名"
+          @input="$emit('change-signature', $event.target.value)"
+        />
+      </div>
+
+      <div class="menu-group">
         <span class="field-label">字体</span>
         <div class="segmented">
           <button
@@ -77,6 +89,7 @@ defineProps({
   noteSize: { type: String, default: "medium" },
   noteTheme: { type: String, default: "yellow" },
   noteFont: { type: String, default: "xikai" },
+  noteSignature: { type: String, default: "" },
   autoStartEnabled: { type: Boolean, default: false },
 });
 
@@ -90,6 +103,7 @@ defineEmits([
   "change-size",
   "change-theme",
   "change-font",
+  "change-signature",
   "change-auto-start",
 ]);
 

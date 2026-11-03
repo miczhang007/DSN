@@ -11,6 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 const KEY_SIZE = "note-size";
 const KEY_THEME = "note-theme";
 const KEY_FONT = "note-font";
+const KEY_SIGNATURE = "note-signature";
 const KEY_POSITION = "note-position";
 const DEFAULT_SIZE = "medium";
 const DEFAULT_THEME = "yellow";
@@ -21,6 +22,7 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
   const noteSize = ref(DEFAULT_SIZE);
   const noteTheme = ref(DEFAULT_THEME);
   const noteFont = ref(DEFAULT_FONT);
+  const noteSignature = ref("");
   const notePosition = ref(DEFAULT_POSITION);
   const autoStartEnabled = ref(false);
 
@@ -29,6 +31,7 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
     noteSize.value = localStorage.getItem(KEY_SIZE) || DEFAULT_SIZE;
     noteTheme.value = localStorage.getItem(KEY_THEME) || DEFAULT_THEME;
     noteFont.value = localStorage.getItem(KEY_FONT) || DEFAULT_FONT;
+    noteSignature.value = localStorage.getItem(KEY_SIGNATURE) || "";
     notePosition.value = localStorage.getItem(KEY_POSITION) || DEFAULT_POSITION;
     localStorage.removeItem("minimal-mode");
   }
@@ -54,6 +57,11 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
   function changeNoteTheme(theme) {
     noteTheme.value = theme;
     localStorage.setItem(KEY_THEME, theme);
+  }
+
+  function changeSignature(text) {
+    noteSignature.value = String(text || "").slice(0, 20);
+    localStorage.setItem(KEY_SIGNATURE, noteSignature.value);
   }
 
   function changeNoteFont(font) {
@@ -91,6 +99,7 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
     noteSize,
     noteTheme,
     noteFont,
+    noteSignature,
     notePosition,
     autoStartEnabled,
     loadSettings,
@@ -98,6 +107,7 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
     changeNoteSize,
     changeNoteTheme,
     changeNoteFont,
+    changeSignature,
     changeNotePosition,
     changeAutoStart,
     refreshAutoStartState,

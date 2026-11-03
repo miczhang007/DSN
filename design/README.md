@@ -169,6 +169,7 @@
 | 日期 | 变更 | 影响文件 |
 | --- | --- | --- |
 | 2026-11-03 | 细节校准：去掉纸张外阴影、胶带改为宽幅半透明撕边双面胶、纸张加入纤维纹理、任务勾选框改圆角方块、新增细楷字体（霞鹜文楷 Light）并默认细楷 | `src/styles.css`、`src/components/AppMenu.vue`、`src/composables/useNoteSettings.js` |
+| 2026-11-03 | 新增设置项「自定义签名」：右下角签名字符可改（≤20 字，留空回落产品名），保存于本机 | `src/composables/useNoteSettings.js`、`src/components/AppMenu.vue`、`src/App.vue` |
 | 2026-11-03 | 顶栏改为标题上方的窄条（双面胶质感、32px），集成最小化与关闭按钮与拖拽区 | `src/App.vue`、`src/styles.css` |
 | 2026-11-03 | 结构微调：纸面恢复圆角/描边/阴影（窗口透明承载外阴影）、顶部双面胶改为独立的深色顶栏（含标题与分类）、设置面板移除「位置」选项 | `src/styles.css`、`src/App.vue`、`src/components/AppMenu.vue`、`src-tauri/tauri.conf.json` |
 | 2026-11-03 | 外框与字体再校准：窗口改为不透明无边框无阴影（纸张铺满整窗）、去掉辨识度低的毛草字体改用霞鹜文楷 Light、确认弹窗与提示条统一纸色与手写标题、胶带改为贴顶柔和撕边 | `src/styles.css`、`src-tauri/tauri.conf.json`、`src/components/AppMenu.vue` |
