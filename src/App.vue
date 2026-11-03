@@ -18,7 +18,7 @@
         </button>
         <h1
           v-if="viewTitle"
-          :class="{ 'quiet-view-title': ['home', 'history', 'recurring-settings', 'recurring-setting-detail'].includes(view) }"
+          :class="{ 'quiet-view-title': view !== 'home' }"
         >
           {{ viewTitle }}
         </h1>
@@ -129,7 +129,6 @@
       </section>
 
       <section v-else-if="view === 'categories'" class="content categories-view" @click.stop>
-        <h1 class="form-title">分类</h1>
         <div v-if="categories.length" class="category-list">
           <article v-for="category in categories" :key="category" class="category-row">
             <input
@@ -190,7 +189,6 @@
       </section>
 
       <section v-else-if="view === 'add'" class="content form-view" @click.stop>
-        <h1 class="form-title">新任务</h1>
         <input
           v-model.trim="draft.title"
           class="task-input"
@@ -308,7 +306,6 @@
       </section>
 
       <section v-else-if="view === 'recurring-settings'" class="content recurring-settings-view" @click.stop>
-        <h1 class="form-title">周期任务规则</h1>
         <div v-if="recurringSettings.length" class="rule-list">
           <article
             v-for="setting in recurringSettings"
@@ -565,7 +562,7 @@ import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 22:33";
+const versionLabel = "v1.5.0 - 2026-11-03 22:37";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -767,10 +764,10 @@ let recurringRefreshTimer = null;
 const viewTitle = computed(() => {
   const titles = {
     home: "待办",
-    categories: "",
-    add: "",
+    categories: "分类",
+    add: "新任务",
     history: "历史任务",
-    "recurring-settings": "",
+    "recurring-settings": "周期任务规则",
     "recurring-setting": "周期设置",
     "recurring-setting-detail": "规则详情",
     detail: "",
