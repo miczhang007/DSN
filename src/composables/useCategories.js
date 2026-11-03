@@ -38,10 +38,10 @@ export function useCategories({ currentCategory, view, openConfirmation, resetDe
     }
   }
 
-  // 支持一次输入多个分类：逗号、顿号、分号、斜杠或空格分隔
+  // 支持一次输入多个分类：一行一个，整行（含空格）都算同一个分类名
   function parseCategoryNames(text) {
     return String(text || "")
-      .split(/[\s,，、;；/]+/)
+      .split(/\r?\n/)
       .map((name) => normalizeCategoryName(name))
       .filter(Boolean);
   }

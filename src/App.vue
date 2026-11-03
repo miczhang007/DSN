@@ -212,13 +212,13 @@
         <form class="category-form category-add-row" @submit.prevent="addCategory">
           <span class="field-label">新增分类</span>
           <div class="category-add-line">
-            <input
-              v-model.trim="categoryDraft"
-              type="text"
-              maxlength="120"
-              placeholder="新分类名称，可用逗号或空格分隔多个"
+            <textarea
+              v-model="categoryDraft"
+              rows="3"
+              maxlength="400"
+              placeholder="每行一个分类"
               autocomplete="off"
-            />
+            ></textarea>
             <button class="text-button" type="submit" :disabled="!categoryDraft">
               添加
             </button>
@@ -600,7 +600,7 @@ import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 23:20";
+const versionLabel = "v1.5.0 - 2026-11-03 23:26";
 
 const view = ref("home");
 const menuOpen = ref(false);

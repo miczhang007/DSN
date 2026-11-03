@@ -167,6 +167,7 @@
 | 日期 | 变更 | 影响文件 |
 | --- | --- | --- |
 | 2026-11-03 | 细节校准：去掉纸张外阴影、胶带改为宽幅半透明撕边双面胶、纸张加入纤维纹理、任务勾选框改圆角方块、新增细楷字体（霞鹜文楷 Light）并默认细楷 | `src/styles.css`、`src/components/AppMenu.vue`、`src/composables/useNoteSettings.js` |
+| 2026-11-03 | 分类新增改为多行输入：一行一个分类，不再按空格/标点切分；输入框改为虚线圆角框 | `src/App.vue`、`src/composables/useCategories.js`、`src/styles.css` |
 | 2026-11-03 | 对齐修正：三个页头图标统一盒模型与字体、最小化线条下移 1px；分类切换箭头改为内联圆形按钮（不再覆盖标签），标签栏两侧不再有渐隐遮挡 | `src/styles.css` |
 | 2026-11-03 | 页头常驻最小化按钮（细线图标，置于「+」之前），菜单里的「最小化窗口」保留作为兜底 | `src/App.vue`、`src/styles.css` |
 | 2026-11-03 | 分类标签超出时可左右切换（两端圆形箭头 + 边缘渐隐），分类管理支持一次输入多个分类（逗号/顿号/分号/空格分隔） | `src/App.vue`、`src/composables/useCategories.js`、`src/styles.css` |

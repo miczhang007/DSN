@@ -88,7 +88,7 @@ describe("桌面便签核心交互", () => {
     const wrapper = mountApp();
     await wrapper.find(".add-button").trigger("click");
     await wrapper.vm.$nextTick();
-    const input = wrapper.find('input[autocomplete="off"]');
+    const input = wrapper.find('textarea[autocomplete="off"]');
     await input.setValue("测试分类");
     await wrapper.find("form.category-form").trigger("submit");
     expect(wrapper.find(".task-list").exists()).toBe(false);
@@ -101,7 +101,7 @@ describe("桌面便签核心交互", () => {
     const wrapper = mountApp();
     await wrapper.find(".add-button").trigger("click");
     await wrapper.vm.$nextTick();
-    await wrapper.find('input[autocomplete="off"]').setValue("待删除");
+    await wrapper.find('textarea[autocomplete="off"]').setValue("待删除");
     await wrapper.find("form.category-form").trigger("submit");
     await wrapper.find(".menu-button").trigger("click");
     const categoryManagerButton = wrapper.findAll("button").find((button) => button.text() === "分类管理");
@@ -796,8 +796,8 @@ describe("桌面便签核心交互", () => {
     const managerButton = wrapper.findAll("button").find((button) => button.text() === "分类管理");
     await managerButton.trigger("click");
     await wrapper.vm.$nextTick();
-    const input = wrapper.find('.category-add-line input[placeholder*="新分类名称"]');
-    await input.setValue("生活，家人、学习");
+    const input = wrapper.find('.category-add-line textarea[placeholder="每行一个分类"]');
+    await input.setValue("生活\n家人\n学习");
     await wrapper.find("form.category-form").trigger("submit");
     await wrapper.vm.$nextTick();
     await flushApp();

@@ -1535,20 +1535,29 @@ h1 {
 .category-add-line {
   display: flex;
   gap: 8px;
-  align-items: center;
-  border-bottom: 1.4px dashed rgba(126, 100, 44, 0.34);
+  align-items: flex-end;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.32);
+  border: 1.2px dashed rgba(126, 100, 44, 0.3);
+  border-radius: 9px;
 }
 
-.category-add-line input {
+.category-add-line textarea {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 8px 2px;
+  padding: 6px 2px;
   color: var(--ink);
   font-family: var(--font-ui);
   font-size: 13.5px;
+  line-height: 1.6;
+  resize: none;
   background: transparent;
   border: 0;
   outline: none;
+}
+
+.category-add-line .text-button {
+  margin-bottom: 2px;
 }
 
 .menu-nav {
