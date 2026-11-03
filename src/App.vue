@@ -1,9 +1,14 @@
 <template>
-  <main class="app-shell" :class="[`size-${noteSize}`, `theme-${noteTheme}`, { 'minimal-mode': minimalModeEnabled }]">
-    <section class="note" :class="{ 'is-subview': view !== 'home' }" @click="closeMenu">
+  <main class="app-shell" :class="[`size-${noteSize}`, `theme-${noteTheme}`, `font-${noteFont}`]">
+    <section
+      class="note"
+      :class="{ 'is-subview': view !== 'home' }"
+      data-tauri-drag-region
+      @click="closeMenu"
+    >
       <div class="pin-shadow"></div>
 
-      <header class="note-header">
+      <header class="note-header" data-tauri-drag-region>
         <button
           v-if="view !== 'home'"
           class="text-button"
@@ -36,9 +41,9 @@
         :open="menuOpen"
         :note-size="noteSize"
         :note-theme="noteTheme"
+        :note-font="noteFont"
         :note-position="notePosition"
         :auto-start-enabled="autoStartEnabled"
-        :minimal-mode-enabled="minimalModeEnabled"
         @history="openHistory"
         @recurring-settings="openRecurringSettings"
         @categories="openCategoryManager"
@@ -46,9 +51,10 @@
         @exit="exitApp"
         @change-size="changeNoteSize"
         @change-theme="changeNoteTheme"
+        @change-font="changeNoteFont"
         @change-position="changeNotePosition"
         @change-auto-start="changeAutoStart"
-        @change-minimal="changeMinimalMode"
+        @minimize="minimizeWindow"
       />
 
       <nav v-if="view === 'home'" class="category-tabs" role="tablist" aria-label="分类">
@@ -98,16 +104,20 @@
               @mousedown.prevent="startRowDrag($event, index)"
               @click.stop="handleTaskMainClick(task)"
             >
-              <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">
-                <span v-if="taskStatus(task) === 'in_progress'" class="in-progress-dot" aria-hidden="true"></span>{{ task.title }}
-              </span>
-              <span class="task-meta">
+              <span class="task-title-line">
+                <span v-if="taskStatus(task) === 'in_progress'" class="in-progress-dot" aria-hidden="true"></span>
+                <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">{{ task.title }}</span>
+                <span v-if="task.is_urgent" class="urgent-chip">紧急</span>
                 <span v-if="task.is_recurring" class="status-chip status-recurring">周期任务</span>
+              </span>
+              <span
+                v-if="task.next_milestone_title || task.next_milestone_planned_at || task.start_at"
+                class="task-meta"
+              >
                 <span v-if="task.next_milestone_title || task.next_milestone_planned_at" class="next-milestone">
                   {{ nextMilestoneText(task) }}
                 </span>
                 <span v-if="isMilestoneOverdue(task.next_milestone_planned_at)" class="overdue-chip">已延迟</span>
-                <span v-if="task.is_urgent" class="urgent-chip">紧急</span>
                 <span v-if="task.start_at && taskStatus(task) === 'not_started'" class="start-time">开始 {{ formatDeadline(task.start_at) }}</span>
               </span>
             </button>
@@ -539,6 +549,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import AboutView from "./components/AboutView.vue";
 import AppMenu from "./components/AppMenu.vue";
 import AppNotice from "./components/AppNotice.vue";
@@ -557,7 +568,7 @@ import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.4.3 - 2026-11-03 16:41";
+const versionLabel = "v1.5.0 - 2026-11-03 20:16";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -575,16 +586,16 @@ setErrorReporter((message) => showNotice(message));
 const {
   noteSize,
   noteTheme,
+  noteFont,
   notePosition,
   autoStartEnabled,
-  minimalModeEnabled,
   loadSettings,
   applyInitialLayout,
   changeNoteSize,
   changeNoteTheme,
+  changeNoteFont,
   changeNotePosition,
   changeAutoStart,
-  changeMinimalMode,
 } = useNoteSettings({ closeMenu, notify: showNotice });
 
 // openTask 由 useTaskDetail 提供，而 useTaskList 需要它、useTaskDetail 又需要
@@ -952,6 +963,12 @@ function resetSessionState() {
 
 async function exitApp() {
   await invoke("exit_app");
+}
+
+// 无边框窗口没有系统按钮，最小化由便签菜单触发。
+async function minimizeWindow() {
+  menuOpen.value = false;
+  await getCurrentWindow().minimize();
 }
 
 async function openExternal(url) {

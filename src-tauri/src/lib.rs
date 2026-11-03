@@ -251,7 +251,6 @@ pub fn run() {
             list_recurring_setting_events,
             set_note_size,
             set_note_position,
-            set_minimal_mode,
             is_auto_start_enabled,
             set_auto_start_enabled,
             open_external_link,
@@ -1558,25 +1557,8 @@ fn set_note_position(app: AppHandle, position: String) -> Result<(), String> {
     place_window(&window, &position)
 }
 
-#[tauri::command]
-fn set_minimal_mode(app: AppHandle, enabled: bool) -> Result<bool, String> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "找不到主窗口".to_string())?;
-    window
-        .set_decorations(!enabled)
-        .map_err(|err| format!("设置窗口外框失败：{err}"))?;
-    window
-        .set_skip_taskbar(enabled)
-        .map_err(|err| format!("设置任务栏显示失败：{err}"))?;
-    window
-        .set_always_on_top(false)
-        .map_err(|err| format!("设置窗口常驻失败：{err}"))?;
-    window
-        .set_always_on_bottom(enabled)
-        .map_err(|err| format!("设置窗口层级失败：{err}"))?;
-    Ok(enabled)
-}
+// 无边框窗口：窗口装饰由前端自绘在便签内，窗口始终保留任务栏入口，
+// 不再区分「普通 / 极简」两种形态，因此这里只保留尺寸与位置两个命令。
 
 #[tauri::command]
 fn is_auto_start_enabled() -> Result<bool, String> {

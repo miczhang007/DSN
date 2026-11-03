@@ -43,7 +43,6 @@ const defaultInvoke = async (command) => {
   if (command === "list_recurring_setting_tasks" || command === "list_recurring_setting_events") return [];
   if (command === "get_task") return taskFixture;
   if (command === "is_auto_start_enabled") return false;
-  if (command === "set_minimal_mode") return false;
   return null;
 };
 const invokeMock = vi.fn(defaultInvoke);
@@ -150,7 +149,7 @@ describe("桌面便签核心交互", () => {
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [];
       if (command === "list_recurring_task_settings") return [activeSetting];
-      if (command === "set_minimal_mode" || command === "is_auto_start_enabled") return false;
+      if (command === "is_auto_start_enabled") return false;
       return null;
     });
     const wrapper = mountApp();
@@ -295,7 +294,7 @@ describe("桌面便签核心交互", () => {
         return null;
       }
       if (command === "get_task_events" || command === "list_milestones") return [];
-      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      if (command === "is_auto_start_enabled") return false;
       return null;
     });
     const wrapper = mountApp();
@@ -337,7 +336,7 @@ describe("桌面便签核心交互", () => {
         return null;
       }
       if (command === "get_task_events" || command === "list_milestones") return [];
-      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      if (command === "is_auto_start_enabled") return false;
       return null;
     });
     const wrapper = mountApp();
@@ -409,7 +408,7 @@ describe("桌面便签核心交互", () => {
       if (command === "list_active_tasks") return invokeMock.activeTasks;
       if (command === "get_task") return invokeMock.activeTasks[0];
       if (command === "get_task_events" || command === "list_milestones") return [];
-      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      if (command === "is_auto_start_enabled") return false;
       return null;
     });
     const wrapper = mountApp();
@@ -433,7 +432,7 @@ describe("桌面便签核心交互", () => {
       if (command === "list_active_tasks") return [];
       if (command === "list_archived_tasks") return [archivedTask];
       if (command === "get_task_events" || command === "list_milestones") return [];
-      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      if (command === "is_auto_start_enabled") return false;
       return null;
     });
     const wrapper = mountApp();
@@ -547,7 +546,7 @@ describe("桌面便签核心交互", () => {
         return null;
       }
       if (command === "get_task_events" || command === "list_milestones") return [];
-      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      if (command === "is_auto_start_enabled") return false;
       return null;
     });
     const wrapper = mountApp();
@@ -633,7 +632,7 @@ describe("桌面便签核心交互", () => {
       if (command === "get_task") return recurringTask;
       if (command === "get_task_events" || command === "list_milestones" || command === "list_recurring_setting_tasks" || command === "list_recurring_setting_events") return [];
       if (command === "list_recurring_task_settings") return [latestSetting];
-      if (command === "set_minimal_mode" || command === "is_auto_start_enabled") return false;
+      if (command === "is_auto_start_enabled") return false;
       return null;
     });
     const wrapper = mountApp();
@@ -652,7 +651,7 @@ describe("桌面便签核心交互", () => {
     localStorage.setItem("current-category", "测试分类");
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [];
-      if (command === "set_minimal_mode" || command === "is_auto_start_enabled") return false;
+      if (command === "is_auto_start_enabled") return false;
       if (command === "set_auto_start_enabled") throw new Error("自启动写入失败");
       return null;
     });
@@ -717,7 +716,7 @@ describe("桌面便签核心交互", () => {
     localStorage.setItem("categories", JSON.stringify(["工作", "生活"]));
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [taskFixture];
-      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      if (command === "is_auto_start_enabled") return false;
       return null;
     });
     const wrapper = mountApp();
@@ -734,7 +733,7 @@ describe("桌面便签核心交互", () => {
     localStorage.setItem("categories", JSON.stringify(["工作", "生活"]));
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [taskFixture];
-      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      if (command === "is_auto_start_enabled") return false;
       return null;
     });
     const wrapper = mountApp();

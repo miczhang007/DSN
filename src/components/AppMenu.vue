@@ -26,6 +26,16 @@
       </div>
       <div class="menu-section">
         <label>
+          <span>字体</span>
+          <select :value="noteFont" @change="$emit('change-font', $event.target.value)">
+            <option v-for="font in fontOptions" :key="font.value" :value="font.value">
+              {{ font.label }}
+            </option>
+          </select>
+        </label>
+      </div>
+      <div class="menu-section">
+        <label>
           <span>便签位置</span>
           <select :value="notePosition" @change="$emit('change-position', $event.target.value)">
             <option v-for="position in positionOptions" :key="position.value" :value="position.value">
@@ -43,15 +53,7 @@
           @change="$emit('change-auto-start', $event.target.checked)"
         />
       </label>
-      <label class="menu-toggle">
-        <span>极简模式</span>
-        <input
-          :checked="minimalModeEnabled"
-          type="checkbox"
-          role="switch"
-          @change="$emit('change-minimal', $event.target.checked)"
-        />
-      </label>
+      <button type="button" @click="$emit('minimize')">最小化窗口</button>
       <button type="button" @click="$emit('about')">产品简介</button>
       <button type="button" class="danger" @click="$emit('exit')">退出</button>
     </nav>
@@ -64,9 +66,9 @@ defineProps({
   open: { type: Boolean, default: false },
   noteSize: { type: String, default: "medium" },
   noteTheme: { type: String, default: "yellow" },
+  noteFont: { type: String, default: "maobi" },
   notePosition: { type: String, default: "top-right" },
   autoStartEnabled: { type: Boolean, default: false },
-  minimalModeEnabled: { type: Boolean, default: false },
 });
 
 defineEmits([
@@ -77,15 +79,23 @@ defineEmits([
   "exit",
   "change-size",
   "change-theme",
+  "change-font",
   "change-position",
   "change-auto-start",
-  "change-minimal",
+  "minimize",
 ]);
 
 const sizeOptions = [
   { label: "小", value: "small" },
   { label: "中", value: "medium" },
   { label: "大", value: "large" },
+];
+
+const fontOptions = [
+  { label: "毛笔楷书", value: "maobi" },
+  { label: "行书", value: "xingshu" },
+  { label: "硬笔行书", value: "yingbi" },
+  { label: "系统楷体", value: "kaishu" },
 ];
 
 const themeOptions = [

@@ -3,7 +3,7 @@
 本目录存放桌面便签主界面改版的视觉稿与设计说明。设计稿为示意图，用于确认方向与信息结构；图中文字为占位示意，实际文案以现有产品文案为准。
 
 - 视觉稿：`mockups/01-home-task-list.png` ~ `07-settings-panel.png`
-- 当前代码基线：`src/App.vue` + `src/components/*` + `src/composables/*`（v1.4.3，单窗口 360×520）
+- 当前代码基线：`src/App.vue` + `src/components/*` + `src/composables/*`（v1.5.0，无边框单窗口 360×520）
 
 ---
 
@@ -168,6 +168,7 @@
 
 | 日期 | 变更 | 影响文件 |
 | --- | --- | --- |
+| 2026-11-03 | 前端视觉按设计稿重写：内置三款手写体（毛笔楷书/行书/硬笔行书，OFL 许可并子集化）、纸张纹理与胶带重做、大字号手写标题与任务名、状态胶囊、分类卡片；主页任务行改为「标题 + 行内胶囊 + 虚线分隔」。字体文件位于 `src/assets/fonts/`，许可在 `third_party_licenses/` | `src/styles.css`、`src/App.vue`、`src/composables/useNoteSettings.js`、`src/components/AppMenu.vue` |
 | 2026-11-03 | P0 视觉层已落地：纸面颗粒 + 顶部胶带 + 楷体手写标题、任务行改虚线便签横线、暖色状态胶囊、实心主按钮、子页标题中文化（待办/新任务/历史任务/任务详情） | `src/styles.css`、`src/App.vue` |
 | 2026-11-03 | 概念调整：原「用户」改为「分类」，`owner` 仍是本地任务归属键；分类入口从页脚移到便签顶部，改为一排纸片式分类标签卡片（当前项浮起，末尾 `+` 进入分类管理），页脚仅保留待办数与品牌名 | `App.vue`、`AppMenu.vue`、`useCategories.js`、`category-storage.js`、`styles.css`、`tests/App.spec.js`、`lib.rs` |
 

@@ -4,7 +4,7 @@ import App from "../src/App.vue";
 
 const invokeMock = vi.fn(async (command) => {
   if (command === "list_active_tasks" || command === "list_archived_tasks") return [];
-  if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+  if (command === "is_auto_start_enabled") return false;
   return [];
 });
 
