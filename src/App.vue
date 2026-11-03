@@ -6,7 +6,12 @@
       data-tauri-drag-region
       @click="closeMenu"
     >
-      <div class="note-topbar" aria-hidden="true"></div>
+      <div class="window-bar" data-tauri-drag-region>
+        <div class="window-actions">
+          <button class="window-button" type="button" aria-label="最小化" @click.stop="minimizeWindow">—</button>
+          <button class="window-button" type="button" aria-label="关闭" @click.stop="exitApp">×</button>
+        </div>
+      </div>
 
       <header class="note-header" data-tauri-drag-region>
         <button
@@ -565,7 +570,7 @@ import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 22:12";
+const versionLabel = "v1.5.0 - 2026-11-03 22:15";
 
 const view = ref("home");
 const menuOpen = ref(false);

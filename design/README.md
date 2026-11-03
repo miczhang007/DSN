@@ -169,6 +169,7 @@
 | 日期 | 变更 | 影响文件 |
 | --- | --- | --- |
 | 2026-11-03 | 细节校准：去掉纸张外阴影、胶带改为宽幅半透明撕边双面胶、纸张加入纤维纹理、任务勾选框改圆角方块、新增细楷字体（霞鹜文楷 Light）并默认细楷 | `src/styles.css`、`src/components/AppMenu.vue`、`src/composables/useNoteSettings.js` |
+| 2026-11-03 | 顶栏改为标题上方的窄条（双面胶质感、32px），集成最小化与关闭按钮与拖拽区 | `src/App.vue`、`src/styles.css` |
 | 2026-11-03 | 结构微调：纸面恢复圆角/描边/阴影（窗口透明承载外阴影）、顶部双面胶改为独立的深色顶栏（含标题与分类）、设置面板移除「位置」选项 | `src/styles.css`、`src/App.vue`、`src/components/AppMenu.vue`、`src-tauri/tauri.conf.json` |
 | 2026-11-03 | 外框与字体再校准：窗口改为不透明无边框无阴影（纸张铺满整窗）、去掉辨识度低的毛草字体改用霞鹜文楷 Light、确认弹窗与提示条统一纸色与手写标题、胶带改为贴顶柔和撕边 | `src/styles.css`、`src-tauri/tauri.conf.json`、`src/components/AppMenu.vue` |
 | 2026-11-03 | 02/03/05/06/07 稿落地：详情页胶囊操作与节点右对齐时间、新建页手写大输入与胶囊开关、周期规则行内编辑、分类当前标记与底部新增、设置面板色板/段控/字体选择；预览见 `design/preview/` | `src/App.vue`、`src/components/AppMenu.vue`、`src/styles.css` |

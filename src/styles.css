@@ -153,39 +153,57 @@ button {
   z-index: 1;
 }
 
-/* 顶部横栏：质地比纸面更深一点的牛皮色，作为标题与分类的承载区 */
-.note-topbar {
+.window-bar {
   position: absolute;
   top: 0;
   right: 0;
   left: 0;
-  height: 104px;
-  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 32px;
+  padding: 0 8px;
+  cursor: grab;
   background:
-    repeating-linear-gradient(92deg, rgba(255, 255, 255, 0.16) 0 1px, rgba(255, 255, 255, 0) 1px 4px),
-    linear-gradient(180deg, rgba(214, 178, 96, 0.5), rgba(224, 192, 116, 0.26) 76%, rgba(224, 192, 116, 0));
+    repeating-linear-gradient(93deg, rgba(255, 255, 255, 0.22) 0 1px, rgba(255, 255, 255, 0) 1px 3px),
+    linear-gradient(180deg, rgba(252, 244, 219, 0.7), rgba(238, 226, 190, 0.55) 68%, rgba(228, 214, 172, 0.46)),
+    rgba(246, 236, 205, 0.5);
+  border-bottom: 1px solid rgba(122, 96, 40, 0.14);
   border-radius: 11px 11px 0 0;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    inset 0 -10px 14px -12px rgba(90, 68, 20, 0.4);
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 2px 5px -3px rgba(74, 56, 18, 0.28);
 }
 
-.note-topbar::after {
-  position: absolute;
-  right: 22px;
-  bottom: 0;
-  left: 22px;
-  height: 1px;
-  content: "";
-  background: linear-gradient(90deg, rgba(122, 96, 40, 0), rgba(122, 96, 40, 0.34), rgba(122, 96, 40, 0));
+.window-bar:active {
+  cursor: grabbing;
 }
 
-.is-subview .note-topbar {
-  height: 62px;
+.window-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.window-button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  color: rgba(80, 62, 26, 0.66);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 6px;
+}
+
+.window-button:hover {
+  color: rgba(52, 38, 12, 0.95);
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .is-subview .content {
-  top: 74px;
+  top: 88px;
 }
 
 /* --------------------------------------------------------------------------
@@ -194,7 +212,7 @@ button {
 
 .note-header {
   position: absolute;
-  top: 20px;
+  top: 44px;
   right: 26px;
   left: 26px;
   display: flex;
@@ -294,7 +312,7 @@ h1 {
 
 .category-tabs {
   position: absolute;
-  top: 62px;
+  top: 86px;
   right: 26px;
   left: 26px;
   display: flex;
@@ -368,7 +386,7 @@ h1 {
 }
 
 .content.has-tabs {
-  top: 108px;
+  top: 132px;
 }
 
 /* --------------------------------------------------------------------------
