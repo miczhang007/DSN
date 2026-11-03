@@ -755,6 +755,20 @@ describe("桌面便签核心交互", () => {
     expect(wrapper.find(".categories-view").exists()).toBe(true);
   });
 
+  it("设置面板可切换内置手写字体并持久化", async () => {
+    localStorage.setItem("current-category", "测试分类");
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.vm.$nextTick();
+    const fontButton = wrapper.findAll(".segmented button").find((button) => button.text() === "行书");
+    await fontButton.trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(localStorage.getItem("note-font")).toBe("xingshu");
+    expect(wrapper.find(".app-shell").classes()).toContain("font-xingshu");
+  });
+
   it("老版本的“用户”数据会自动迁移为分类", async () => {
     localStorage.setItem("current-user", "旧昵称");
     localStorage.setItem("users", JSON.stringify(["旧昵称", "家人"]));
