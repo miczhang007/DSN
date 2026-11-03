@@ -75,7 +75,6 @@
         />
       </label>
 
-      <button type="button" class="menu-footer-action" @click="$emit('minimize')">最小化窗口</button>
       <button type="button" class="menu-footer-action" @click="$emit('about')">产品简介</button>
       <button type="button" class="menu-footer-action danger" @click="$emit('exit')">退出</button>
     </nav>
@@ -99,7 +98,6 @@ defineEmits([
   "categories",
   "about",
   "exit",
-  "minimize",
   "change-size",
   "change-theme",
   "change-font",
