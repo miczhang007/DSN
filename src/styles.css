@@ -420,6 +420,7 @@ h1 {
   display: grid;
   min-width: 0;
   text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .task-title-line {
@@ -427,17 +428,20 @@ h1 {
   flex-wrap: wrap;
   gap: 8px;
   align-items: baseline;
+  min-width: 0;
 }
 
 .task-title {
   display: inline-flex;
   gap: 7px;
   align-items: center;
+  min-width: 0;
   font-family: var(--font-hand);
   font-weight: var(--hand-weight, 600);
   font-size: 21px;
   line-height: 1.34;
   color: var(--ink);
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 
