@@ -53,15 +53,6 @@
         </div>
       </div>
 
-      <label class="menu-row">
-        <span>位置</span>
-        <select :value="notePosition" @change="$emit('change-position', $event.target.value)">
-          <option v-for="position in positionOptions" :key="position.value" :value="position.value">
-            {{ position.label }}
-          </option>
-        </select>
-      </label>
-
       <label class="menu-toggle">
         <span>开机自启动</span>
         <input
@@ -86,7 +77,6 @@ defineProps({
   noteSize: { type: String, default: "medium" },
   noteTheme: { type: String, default: "yellow" },
   noteFont: { type: String, default: "xikai" },
-  notePosition: { type: String, default: "top-right" },
   autoStartEnabled: { type: Boolean, default: false },
 });
 
@@ -100,7 +90,6 @@ defineEmits([
   "change-size",
   "change-theme",
   "change-font",
-  "change-position",
   "change-auto-start",
 ]);
 
@@ -126,11 +115,4 @@ const themeOptions = [
   { label: "白色", value: "white", color: "#f5f1e4" },
 ];
 
-const positionOptions = [
-  { label: "居中", value: "center" },
-  { label: "右上", value: "top-right" },
-  { label: "右下", value: "bottom-right" },
-  { label: "左上", value: "top-left" },
-  { label: "左下", value: "bottom-left" },
-];
 </script>

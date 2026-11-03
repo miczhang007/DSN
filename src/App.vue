@@ -6,7 +6,7 @@
       data-tauri-drag-region
       @click="closeMenu"
     >
-      <div class="pin-shadow"></div>
+      <div class="note-topbar" aria-hidden="true"></div>
 
       <header class="note-header" data-tauri-drag-region>
         <button
@@ -42,7 +42,6 @@
         :note-size="noteSize"
         :note-theme="noteTheme"
         :note-font="noteFont"
-        :note-position="notePosition"
         :auto-start-enabled="autoStartEnabled"
         @history="openHistory"
         @recurring-settings="openRecurringSettings"
@@ -52,7 +51,6 @@
         @change-size="changeNoteSize"
         @change-theme="changeNoteTheme"
         @change-font="changeNoteFont"
-        @change-position="changeNotePosition"
         @change-auto-start="changeAutoStart"
         @minimize="minimizeWindow"
       />
@@ -567,7 +565,7 @@ import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 22:03";
+const versionLabel = "v1.5.0 - 2026-11-03 22:12";
 
 const view = ref("home");
 const menuOpen = ref(false);
