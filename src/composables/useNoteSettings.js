@@ -16,13 +16,14 @@ const KEY_POSITION = "note-position";
 const DEFAULT_SIZE = "medium";
 const DEFAULT_THEME = "yellow";
 const DEFAULT_FONT = "xikai";
+const DEFAULT_SIGNATURE = "桌面便签";
 const DEFAULT_POSITION = "top-right";
 
 export function useNoteSettings({ closeMenu, notify } = {}) {
   const noteSize = ref(DEFAULT_SIZE);
   const noteTheme = ref(DEFAULT_THEME);
   const noteFont = ref(DEFAULT_FONT);
-  const noteSignature = ref("");
+  const noteSignature = ref(DEFAULT_SIGNATURE);
   const notePosition = ref(DEFAULT_POSITION);
   const autoStartEnabled = ref(false);
 
@@ -31,7 +32,7 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
     noteSize.value = localStorage.getItem(KEY_SIZE) || DEFAULT_SIZE;
     noteTheme.value = localStorage.getItem(KEY_THEME) || DEFAULT_THEME;
     noteFont.value = localStorage.getItem(KEY_FONT) || DEFAULT_FONT;
-    noteSignature.value = localStorage.getItem(KEY_SIGNATURE) || "";
+    noteSignature.value = localStorage.getItem(KEY_SIGNATURE) ?? DEFAULT_SIGNATURE;
     notePosition.value = localStorage.getItem(KEY_POSITION) || DEFAULT_POSITION;
     localStorage.removeItem("minimal-mode");
   }
@@ -62,6 +63,11 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
   function changeSignature(text) {
     noteSignature.value = String(text || "").slice(0, 20);
     localStorage.setItem(KEY_SIGNATURE, noteSignature.value);
+  }
+
+  /** 签名留空时回落到默认签名。 */
+  function displaySignature() {
+    return noteSignature.value || DEFAULT_SIGNATURE;
   }
 
   function changeNoteFont(font) {
@@ -108,6 +114,8 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
     changeNoteTheme,
     changeNoteFont,
     changeSignature,
+    displaySignature,
+    DEFAULT_SIGNATURE,
     changeNotePosition,
     changeAutoStart,
     refreshAutoStartState,

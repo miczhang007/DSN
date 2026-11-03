@@ -528,7 +528,7 @@
 
       <footer class="note-footer">
         <span v-if="currentCategory" class="category-count">{{ activeTasks.length }} 项</span>
-        <span class="brand-mark">{{ noteSignature || productName }}</span>
+        <span class="brand-mark">{{ noteSignature || "桌面便签" }}</span>
       </footer>
     </section>
   </main>
@@ -563,10 +563,9 @@ import { useCategories } from "./composables/useCategories.js";
 import { formatDeadline, formatTime } from "./lib/datetime.js";
 import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
-import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 22:29";
+const versionLabel = "v1.5.0 - 2026-11-03 22:33";
 
 const view = ref("home");
 const menuOpen = ref(false);

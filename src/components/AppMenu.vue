@@ -45,7 +45,7 @@
           :value="noteSignature"
           type="text"
           maxlength="20"
-          placeholder="留空显示产品名"
+          placeholder="桌面便签"
           @input="$emit('change-signature', $event.target.value)"
         />
       </div>
