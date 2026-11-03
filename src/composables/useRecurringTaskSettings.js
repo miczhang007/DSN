@@ -9,7 +9,7 @@ import { localDateInputValue } from "../lib/datetime.js";
 
 /**
  * @param {object} deps
- * @param {import("vue").Ref<string>}  deps.currentUser
+ * @param {import("vue").Ref<string>}  deps.currentCategory
  * @param {import("vue").Ref<string>}  deps.view
  * @param {import("vue").Ref<boolean>} deps.menuOpen
  * @param {Function} deps.notify                错误提示
@@ -17,10 +17,10 @@ import { localDateInputValue } from "../lib/datetime.js";
  * @param {Function} deps.openConfirmation      打开应用内确认弹窗
  * @param {Function} deps.refreshActiveTasks
  * @param {object}   deps.draft                 新增任务草稿（新建周期规则时作为初值来源）
- * @param {Function} deps.openUserManager
+ * @param {Function} deps.openCategoryManager
  */
 export function useRecurringTaskSettings({
-  currentUser,
+  currentCategory,
   view,
   menuOpen,
   notify,
@@ -28,7 +28,7 @@ export function useRecurringTaskSettings({
   openConfirmation,
   refreshActiveTasks,
   draft,
-  openUserManager,
+  openCategoryManager,
 }) {
   const recurringSettings = ref([]);
   const recurringSettingTasks = ref([]);
@@ -52,11 +52,11 @@ export function useRecurringTaskSettings({
   });
 
   async function loadRecurringSettings() {
-    recurringSettings.value = await invoke("list_recurring_task_settings", { owner: currentUser.value });
+    recurringSettings.value = await invoke("list_recurring_task_settings", { owner: currentCategory.value });
   }
 
   async function openRecurringSettings() {
-    if (!currentUser.value) return openUserManager();
+    if (!currentCategory.value) return openCategoryManager();
     menuOpen.value = false;
     expandedHistoryTaskId.value = "";
     await loadRecurringSettings();
@@ -68,7 +68,7 @@ export function useRecurringTaskSettings({
       "作废周期任务设置",
       "作废后不可恢复，且不会再生成新的任务。确定继续吗？",
       async () => {
-        await invoke("void_recurring_task_setting", { owner: currentUser.value, settingId: setting.id });
+        await invoke("void_recurring_task_setting", { owner: currentCategory.value, settingId: setting.id });
         expandedHistoryTaskId.value = "";
         await loadRecurringSettings();
       },
@@ -79,7 +79,7 @@ export function useRecurringTaskSettings({
   function deleteRecurringSetting(setting) {
     openConfirmation("删除周期任务规则", `确定删除“${setting.title}”吗？删除后不可恢复。`, async () => {
       try {
-        await invoke("delete_recurring_task_setting", { owner: currentUser.value, settingId: setting.id });
+        await invoke("delete_recurring_task_setting", { owner: currentCategory.value, settingId: setting.id });
         expandedHistoryTaskId.value = "";
         await loadRecurringSettings();
       } catch (err) {
@@ -118,7 +118,7 @@ export function useRecurringTaskSettings({
     recurringDraft.repeatCount = source.repeat_count || 1;
     recurringDraft.generateTime = source.generate_time || "06:00";
     recurringSettingTasks.value = source.id
-      ? await invoke("list_recurring_setting_tasks", { owner: currentUser.value, settingId: source.id })
+      ? await invoke("list_recurring_setting_tasks", { owner: currentCategory.value, settingId: source.id })
       : [];
     view.value = "recurring-setting";
   }
@@ -127,18 +127,18 @@ export function useRecurringTaskSettings({
     expandedHistoryTaskId.value = "";
     recurringDetail.value = setting;
     recurringSettingTasks.value = await invoke("list_recurring_setting_tasks", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       settingId: setting.id,
     });
     recurringSettingEvents.value = await invoke("list_recurring_setting_events", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       settingId: setting.id,
     });
     view.value = "recurring-setting-detail";
   }
 
   async function openRecurringSettingById(id) {
-    const latestSettings = await invoke("list_recurring_task_settings", { owner: currentUser.value });
+    const latestSettings = await invoke("list_recurring_task_settings", { owner: currentCategory.value });
     recurringSettings.value = latestSettings;
     const setting = latestSettings.find((item) => item.id === id);
     if (setting) await openRecurringSetting(setting);
@@ -146,7 +146,7 @@ export function useRecurringTaskSettings({
 
   async function saveRecurringSetting() {
     const payload = {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       title: recurringDraft.title,
       isUrgent: false,
       dateRangeType: recurringDraft.dateRangeType,

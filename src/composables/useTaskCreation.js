@@ -8,11 +8,11 @@ import { dateTimeToIso, defaultStartTime, localDateInputValue } from "../lib/dat
 
 /**
  * @param {object} deps
- * @param {import("vue").Ref<string>} deps.currentUser
+ * @param {import("vue").Ref<string>} deps.currentCategory
  * @param {import("vue").Ref<string>} deps.view
  * @param {Function} deps.refreshActiveTasks
  */
-export function useTaskCreation({ currentUser, view, refreshActiveTasks }) {
+export function useTaskCreation({ currentCategory, view, refreshActiveTasks }) {
   const draft = reactive({
     title: "",
     isUrgent: false,
@@ -38,7 +38,7 @@ export function useTaskCreation({ currentUser, view, refreshActiveTasks }) {
     if (!draft.title) return;
     if (draft.isRecurring) {
       await invoke("create_recurring_task_setting", {
-        owner: currentUser.value,
+        owner: currentCategory.value,
         title: draft.title,
         isUrgent: false,
         dateRangeType: draft.dateRangeType,
@@ -70,7 +70,7 @@ export function useTaskCreation({ currentUser, view, refreshActiveTasks }) {
       plannedAt: dateTimeToIso(ms.plannedAt, ms.plannedAtTime),
     }));
     await invoke("create_task", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       title: draft.title,
       deadlineAt: null,
       isUrgent: draft.isUrgent,

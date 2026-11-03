@@ -8,7 +8,7 @@ import { localDateInputValue } from "../lib/datetime.js";
 
 /**
  * @param {object} deps
- * @param {import("vue").Ref<string>}  deps.currentUser
+ * @param {import("vue").Ref<string>}  deps.currentCategory
  * @param {import("vue").Ref<string>}  deps.view
  * @param {import("vue").Ref<boolean>} deps.menuOpen
  * @param {Function} deps.notify                错误提示
@@ -16,10 +16,10 @@ import { localDateInputValue } from "../lib/datetime.js";
  * @param {import("vue").Ref<string>}  deps.expandedHistoryTaskId
  * @param {Function} deps.openConfirmation
  * @param {Function} deps.refreshActiveTasks
- * @param {Function} deps.openUserManager
+ * @param {Function} deps.openCategoryManager
  */
 export function useHistory({
-  currentUser,
+  currentCategory,
   view,
   menuOpen,
   notify,
@@ -27,17 +27,17 @@ export function useHistory({
   expandedHistoryTaskId,
   openConfirmation,
   refreshActiveTasks,
-  openUserManager,
+  openCategoryManager,
 }) {
   const archivedTasks = ref([]);
 
   async function loadArchivedTasks() {
-    archivedTasks.value = await invoke("list_archived_tasks", { owner: currentUser.value });
+    archivedTasks.value = await invoke("list_archived_tasks", { owner: currentCategory.value });
   }
 
   async function openHistory() {
-    if (!currentUser.value) {
-      openUserManager();
+    if (!currentCategory.value) {
+      openCategoryManager();
       return;
     }
     menuOpen.value = false;
@@ -64,7 +64,7 @@ export function useHistory({
 
   async function runHistoryAction(task, action) {
     try {
-      await invoke("restore_archived_task", { owner: currentUser.value, taskId: task.id, action });
+      await invoke("restore_archived_task", { owner: currentCategory.value, taskId: task.id, action });
       await loadArchivedTasks();
       await refreshActiveTasks();
       expandedHistoryTaskId.value = "";
@@ -93,7 +93,7 @@ export function useHistory({
 
   function deleteArchivedTask(task) {
     openConfirmation("删除任务", `确定删除“${task.title}”吗？删除后将从历史和任务列表中隐藏。`, async () => {
-      await invoke("delete_task", { owner: currentUser.value, taskId: task.id });
+      await invoke("delete_task", { owner: currentCategory.value, taskId: task.id });
       view.value = "history";
       await loadArchivedTasks();
     });

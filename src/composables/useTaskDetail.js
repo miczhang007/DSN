@@ -19,25 +19,25 @@ const DRAG_THRESHOLD_PX = 5;
 
 /**
  * @param {object} deps
- * @param {import("vue").Ref<string>}  deps.currentUser
+ * @param {import("vue").Ref<string>}  deps.currentCategory
  * @param {import("vue").Ref<string>}  deps.view
  * @param {import("vue").Ref<boolean>} deps.menuOpen
  * @param {Function} deps.notify              错误提示
  * @param {import("vue").Ref<object>} deps.confirmation  确认弹窗状态
  * @param {import("vue").Ref<string>} deps.expandedHistoryTaskId
  * @param {Function} deps.refreshActiveTasks
- * @param {Function} deps.openUserManager     未选择用户时跳转用户管理
+ * @param {Function} deps.openCategoryManager     未选择分类时跳转分类管理
  * @param {Function} deps.openConfirmation    打开应用内确认弹窗
  */
 export function useTaskDetail({
-  currentUser,
+  currentCategory,
   view,
   menuOpen,
   notify,
   confirmation,
   expandedHistoryTaskId,
   refreshActiveTasks,
-  openUserManager,
+  openCategoryManager,
   openConfirmation,
 }) {
   const selectedTask = ref(null);
@@ -65,8 +65,8 @@ export function useTaskDetail({
   let suppressMilestoneClick = false;
 
   async function openTask(task) {
-    if (!currentUser.value) {
-      openUserManager();
+    if (!currentCategory.value) {
+      openCategoryManager();
       return;
     }
     menuOpen.value = false;
@@ -89,20 +89,20 @@ export function useTaskDetail({
     progressDate.value = localDateInputValue();
     progressTime.value = "";
     taskEvents.value = await invoke("get_task_events", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId: task.id,
     });
     taskEvents.value = [...taskEvents.value].sort(compareEventTime);
     milestones.value = task.is_recurring
       ? []
       : await invoke("list_milestones", {
-          owner: currentUser.value,
+          owner: currentCategory.value,
           taskId: task.id,
         });
     view.value = "detail";
   }
 
-  // 切换或删除用户时清空详情页残留状态，避免把上一个用户的数据带过来。
+  // 切换或删除分类时清空详情页残留状态，避免把上一个分类的数据带过来。
   function resetDetailState() {
     selectedTask.value = null;
     taskEvents.value = [];
@@ -125,25 +125,25 @@ export function useTaskDetail({
     const taskId = selectedTask.value.id;
     try {
       if (action === "suspend") {
-        await invoke("suspend_task", { owner: currentUser.value, taskId });
+        await invoke("suspend_task", { owner: currentCategory.value, taskId });
       } else if (action === "activate") {
-        await invoke("activate_task", { owner: currentUser.value, taskId });
+        await invoke("activate_task", { owner: currentCategory.value, taskId });
       } else if (action === "start") {
-        await invoke("start_task", { owner: currentUser.value, taskId });
+        await invoke("start_task", { owner: currentCategory.value, taskId });
       } else if (action === "complete") {
-        await invoke("complete_task", { owner: currentUser.value, taskId, completedAt: null });
+        await invoke("complete_task", { owner: currentCategory.value, taskId, completedAt: null });
       } else if (action === "undo_complete") {
-        await invoke("undo_complete_task", { owner: currentUser.value, taskId });
+        await invoke("undo_complete_task", { owner: currentCategory.value, taskId });
       } else if (action === "archive") {
         if (taskStatus(selectedTask.value) === "completed") {
-          await invoke("archive_task", { owner: currentUser.value, taskId, isCompleted: true });
+          await invoke("archive_task", { owner: currentCategory.value, taskId, isCompleted: true });
         } else {
           confirmArchiveTask(taskId);
           return;
         }
       }
       const updated = await invoke("get_task", {
-        owner: currentUser.value,
+        owner: currentCategory.value,
         taskId,
       });
       await openTask(updated);
@@ -190,11 +190,11 @@ export function useTaskDetail({
 
   async function performComplete(taskId, completedAt) {
     try {
-      await invoke("complete_task", { owner: currentUser.value, taskId, completedAt });
+      await invoke("complete_task", { owner: currentCategory.value, taskId, completedAt });
       await refreshActiveTasks();
       if (view.value === "detail" && selectedTask.value?.id === taskId) {
         const updated = await invoke("get_task", {
-          owner: currentUser.value,
+          owner: currentCategory.value,
           taskId,
         });
         await openTask(updated);
@@ -223,7 +223,7 @@ export function useTaskDetail({
   async function performNodeComplete(milestoneId, completedAt) {
     try {
       await invoke("complete_milestone", {
-        owner: currentUser.value,
+        owner: currentCategory.value,
         taskId: selectedTask.value.id,
         milestoneId,
         completedAt,
@@ -285,7 +285,7 @@ export function useTaskDetail({
     if (!selectedTask.value) return;
     try {
       await invoke("reorder_milestones", {
-        owner: currentUser.value,
+        owner: currentCategory.value,
         taskId: selectedTask.value.id,
         orderedIds: milestones.value.map((milestone) => milestone.id),
       });
@@ -307,7 +307,7 @@ export function useTaskDetail({
     if (!selectedTask.value) return;
     if (!editDraft.title) return;
     await invoke("update_task", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId: selectedTask.value.id,
       title: editDraft.title,
       deadlineAt: null,
@@ -318,7 +318,7 @@ export function useTaskDetail({
           : null,
     });
     const updated = await invoke("get_task", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId: selectedTask.value.id,
     });
     await openTask(updated);
@@ -327,7 +327,7 @@ export function useTaskDetail({
   async function reloadTaskDetail() {
     if (!selectedTask.value) return;
     const updated = await invoke("get_task", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId: selectedTask.value.id,
     });
     await openTask(updated);
@@ -347,7 +347,7 @@ export function useTaskDetail({
   async function addMilestone() {
     if (!selectedTask.value || !milestoneDraft.title) return;
     await invoke("add_milestone", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId: selectedTask.value.id,
       title: milestoneDraft.title,
       plannedAt: dateTimeToIso(milestoneDraft.plannedAt, milestoneDraft.plannedAtTime),
@@ -375,7 +375,7 @@ export function useTaskDetail({
   async function saveMilestoneEdit(milestone) {
     if (!selectedTask.value || !milestoneEditDraft.title) return;
     await invoke("update_milestone", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId: selectedTask.value.id,
       milestoneId: milestone.id,
       title: milestoneEditDraft.title,
@@ -388,7 +388,7 @@ export function useTaskDetail({
   async function undoCompleteMilestone(milestone) {
     if (!selectedTask.value) return;
     await invoke("undo_complete_milestone", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId: selectedTask.value.id,
       milestoneId: milestone.id,
     });
@@ -407,7 +407,7 @@ export function useTaskDetail({
   async function removeMilestone(milestone) {
     if (!selectedTask.value) return;
     await invoke("delete_milestone", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId: selectedTask.value.id,
       milestoneId: milestone.id,
     });
@@ -423,13 +423,13 @@ export function useTaskDetail({
   async function saveTaskProgress() {
     if (!selectedTask.value || !progressDraft.value) return;
     await invoke("add_task_progress", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId: selectedTask.value.id,
       progress: progressDraft.value,
       recordedAt: dateTimeToIso(progressDate.value, progressTime.value),
     });
     const updated = await invoke("get_task", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId: selectedTask.value.id,
     });
     await openTask(updated);
@@ -445,12 +445,12 @@ export function useTaskDetail({
 
   async function removeTaskProgress(taskId, eventId) {
     await invoke("delete_task_progress", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId,
       eventId,
     });
     const updated = await invoke("get_task", {
-      owner: currentUser.value,
+      owner: currentCategory.value,
       taskId,
     });
     await openTask(updated);
@@ -467,10 +467,10 @@ export function useTaskDetail({
       isCompleted: false,
       state,
       action: async () => {
-        await invoke("archive_task", { owner: currentUser.value, taskId, isCompleted: state.isCompleted });
+        await invoke("archive_task", { owner: currentCategory.value, taskId, isCompleted: state.isCompleted });
         await refreshActiveTasks();
         if (view.value === "detail" && selectedTask.value?.id === taskId) {
-          const updated = await invoke("get_task", { owner: currentUser.value, taskId });
+          const updated = await invoke("get_task", { owner: currentCategory.value, taskId });
           await openTask(updated);
         }
       },

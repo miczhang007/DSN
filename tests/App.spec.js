@@ -17,7 +17,7 @@ const recurringSettingFixture = {
 
 const taskFixture = {
   id: "task-1",
-  owner: "测试用户",
+  owner: "测试分类",
   title: "整理资料",
   deadline_at: null,
   is_urgent: false,
@@ -72,49 +72,49 @@ describe("桌面便签核心交互", () => {
     localStorage.clear();
   });
 
-  async function openAddForUser(wrapper) {
+  async function openAddForCategory(wrapper) {
     await wrapper.find(".add-button").trigger("click");
     await wrapper.vm.$nextTick();
   }
 
-  it("无用户时打开应用会进入用户管理，并提供添加用户入口", async () => {
+  it("无分类时打开应用会进入分类管理，并提供添加分类入口", async () => {
     const wrapper = mountApp();
     await wrapper.find(".add-button").trigger("click");
     await wrapper.vm.$nextTick();
-    expect(wrapper.find(".users-view").exists()).toBe(true);
-    expect(wrapper.text()).toContain("新增用户");
+    expect(wrapper.find(".categories-view").exists()).toBe(true);
+    expect(wrapper.text()).toContain("新增分类");
   });
 
-  it("添加用户后进入首页并加载该用户任务", async () => {
+  it("添加分类后进入首页并加载该分类任务", async () => {
     const wrapper = mountApp();
     await wrapper.find(".add-button").trigger("click");
     await wrapper.vm.$nextTick();
-    const input = wrapper.find('input[autocomplete="username"]');
-    await input.setValue("测试用户");
-    await wrapper.find("form.user-form").trigger("submit");
+    const input = wrapper.find('input[autocomplete="off"]');
+    await input.setValue("测试分类");
+    await wrapper.find("form.category-form").trigger("submit");
     expect(wrapper.find(".task-list").exists()).toBe(false);
     expect(wrapper.text()).toContain("今天还没有待办");
-    expect(localStorage.getItem("current-user")).toBe("测试用户");
-    expect(invokeMock).toHaveBeenCalledWith("list_active_tasks", { owner: "测试用户" });
+    expect(localStorage.getItem("current-category")).toBe("测试分类");
+    expect(invokeMock).toHaveBeenCalledWith("list_active_tasks", { owner: "测试分类" });
   });
 
-  it("删除用户前显示应用内确认弹窗，不调用原生 confirm", async () => {
+  it("删除分类前显示应用内确认弹窗，不调用原生 confirm", async () => {
     const wrapper = mountApp();
     await wrapper.find(".add-button").trigger("click");
     await wrapper.vm.$nextTick();
-    await wrapper.find('input[autocomplete="username"]').setValue("待删除");
-    await wrapper.find("form.user-form").trigger("submit");
+    await wrapper.find('input[autocomplete="off"]').setValue("待删除");
+    await wrapper.find("form.category-form").trigger("submit");
     await wrapper.find(".menu-button").trigger("click");
-    const userManagerButton = wrapper.findAll("button").find((button) => button.text() === "用户管理");
-    await userManagerButton.trigger("click");
+    const categoryManagerButton = wrapper.findAll("button").find((button) => button.text() === "分类管理");
+    await categoryManagerButton.trigger("click");
     const deleteButton = wrapper.findAll("button").find((button) => button.text() === "删除");
     await deleteButton.trigger("click");
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
-    expect(document.body.textContent).toContain("删除用户");
+    expect(document.body.textContent).toContain("删除分类");
   });
 
   it("已作废规则显示操作入口且仅提供删除", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
     await flushApp();
@@ -130,7 +130,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("已作废规则的删除操作会打开应用内确认弹窗", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
     await flushApp();
@@ -145,7 +145,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("作废周期规则的确认按钮显示确认作废", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const activeSetting = { ...recurringSettingFixture, status: "生效中" };
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [];
@@ -167,7 +167,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("离开规则列表后自动收起弹出菜单", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
     await wrapper.find(".menu-button").trigger("click");
@@ -182,10 +182,10 @@ describe("桌面便签核心交互", () => {
   });
 
   it("普通任务添加提交标题和节点参数", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
-    await openAddForUser(wrapper);
+    await openAddForCategory(wrapper);
     expect(wrapper.find(".milestone-editor h2").exists()).toBe(false);
     await wrapper.find('input[maxlength="80"]').setValue("整理资料");
     const addMilestone = wrapper.findAll("button").find((button) => button.text() === "添加节点");
@@ -193,14 +193,14 @@ describe("桌面便签核心交互", () => {
     await wrapper.find('input[placeholder="节点名称"]').setValue("完成初稿");
     await wrapper.find("form.milestone-form").trigger("submit");
     await wrapper.findAll("button").find((button) => button.text() === "添加任务").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("create_task", expect.objectContaining({ owner: "测试用户", title: "整理资料" }));
+    expect(invokeMock).toHaveBeenCalledWith("create_task", expect.objectContaining({ owner: "测试分类", title: "整理资料" }));
   });
 
   it("勾选未来任务后创建任务提交开始执行时间（未指定时间仅存日期）", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
-    await openAddForUser(wrapper);
+    await openAddForCategory(wrapper);
     await wrapper.find('input[maxlength="80"]').setValue("下周启动项目");
     const futureCheckbox = wrapper
       .findAll('input[type="checkbox"]')
@@ -219,10 +219,10 @@ describe("桌面便签核心交互", () => {
   });
 
   it("未来任务指定具体时间时提交完整时间，清空时间后退回仅日期", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
-    await openAddForUser(wrapper);
+    await openAddForCategory(wrapper);
     await wrapper.find('input[maxlength="80"]').setValue("下周启动项目");
     const futureCheckbox = wrapper
       .findAll('input[type="checkbox"]')
@@ -237,7 +237,7 @@ describe("桌面便签核心交互", () => {
     }));
 
     // 再次进入添加页：清空时间 → 退回仅日期提交
-    await openAddForUser(wrapper);
+    await openAddForCategory(wrapper);
     await wrapper.find('input[maxlength="80"]').setValue("下周启动项目");
     const futureCheckbox2 = wrapper
       .findAll('input[type="checkbox"]')
@@ -254,7 +254,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("任务列表不展示状态标签，进行中任务标题前展示绿点，周期任务保留标签", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     invokeMock.activeTasks = [
       { ...taskFixture, id: "t1", title: "任务A", status: "pending" },
       { ...taskFixture, id: "t2", title: "未来任务", status: "not_started", start_at: "2999-01-01T00:00:00Z" },
@@ -274,7 +274,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("详情页支持待完成开始执行、挂起与激活", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const pendingTask = { ...taskFixture, id: "t1", title: "写周报", status: "pending" };
     const inProgressTask = { ...taskFixture, id: "t1", title: "写周报", status: "in_progress", started_at: "2026-08-31T08:00:00Z" };
     const suspendedTask = { ...taskFixture, id: "t1", title: "写周报", status: "suspended", suspended_at: "2026-08-31T09:00:00Z" };
@@ -305,22 +305,22 @@ describe("桌面便签核心交互", () => {
     await wrapper.vm.$nextTick();
     // 待完成 → 进行中
     await wrapper.findAll("button").find((button) => button.text() === "进行中").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("start_task", { owner: "测试用户", taskId: "t1" });
+    expect(invokeMock).toHaveBeenCalledWith("start_task", { owner: "测试分类", taskId: "t1" });
     await flushApp();
     // 进行中 → 挂起
     await wrapper.findAll("button").find((button) => button.text() === "挂起").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("suspend_task", { owner: "测试用户", taskId: "t1" });
+    expect(invokeMock).toHaveBeenCalledWith("suspend_task", { owner: "测试分类", taskId: "t1" });
     await flushApp();
     // 已挂起 → 激活（变更为待完成）
     await wrapper.findAll("button").find((button) => button.text() === "激活").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("activate_task", { owner: "测试用户", taskId: "t1" });
+    expect(invokeMock).toHaveBeenCalledWith("activate_task", { owner: "测试分类", taskId: "t1" });
     await flushApp();
     // 激活后回到待完成，重新出现“进行中”入口
     expect(wrapper.findAll("button").some((button) => button.text() === "进行中")).toBe(true);
   });
 
   it("未来任务到达执行时间自动进行中，挂起激活后变更为待完成", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const futureTask = { ...taskFixture, id: "t1", title: "未来任务", status: "in_progress", start_at: "2026-08-30T02:00:00Z" };
     const suspendedTask = { ...futureTask, status: "suspended", suspended_at: "2026-09-01T02:00:00Z" };
     const pendingTask = { ...futureTask, status: "pending", reactivated_at: "2026-09-01T03:00:00Z", suspended_at: null };
@@ -350,7 +350,7 @@ describe("桌面便签核心交互", () => {
     await wrapper.findAll("button").find((button) => button.text() === "挂起").trigger("click");
     await flushApp();
     await wrapper.findAll("button").find((button) => button.text() === "激活").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("activate_task", { owner: "测试用户", taskId: "t1" });
+    expect(invokeMock).toHaveBeenCalledWith("activate_task", { owner: "测试分类", taskId: "t1" });
     await flushApp();
     // 激活后与其他任务一致：待完成，出现“进行中”入口
     expect(wrapper.find(".detail-meta-row .status-chip").text()).toContain("待完成");
@@ -358,7 +358,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("完成任务后保留在当前列表并以划线展示", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const inProgressTask = { ...taskFixture, id: "t1", title: "写周报", status: "in_progress" };
     invokeMock.activeTasks = [inProgressTask];
     invokeMock.mockImplementation(async (command) => {
@@ -385,7 +385,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("周期任务标记完成无需确认完成时间", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const recurringTask = { ...taskFixture, id: "t1", title: "每日运动", status: "pending", is_recurring: true, recurring_setting_id: "setting-1" };
     invokeMock.activeTasks = [recurringTask];
     invokeMock.mockImplementation(async (command) => {
@@ -402,7 +402,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("详情页已完成任务支持撤销完成与直接归档", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const completedTask = { ...taskFixture, id: "t1", title: "写周报", status: "completed", completed_at: "2026-08-31T08:00:00Z" };
     invokeMock.activeTasks = [completedTask];
     invokeMock.mockImplementation(async (command) => {
@@ -418,16 +418,16 @@ describe("桌面便签核心交互", () => {
     await wrapper.find(".task-main").trigger("click");
     await wrapper.vm.$nextTick();
     await wrapper.findAll("button").find((button) => button.text() === "撤销完成").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("undo_complete_task", { owner: "测试用户", taskId: "t1" });
+    expect(invokeMock).toHaveBeenCalledWith("undo_complete_task", { owner: "测试分类", taskId: "t1" });
 
     // 已完成任务归档：直接调用接口，无确认弹窗
     await wrapper.findAll("button").find((button) => button.text() === "归档").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("archive_task", { owner: "测试用户", taskId: "t1", isCompleted: true });
+    expect(invokeMock).toHaveBeenCalledWith("archive_task", { owner: "测试分类", taskId: "t1", isCompleted: true });
     expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   });
 
   it("历史任务撤销完成时询问是否同时撤销归档", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const archivedTask = { ...taskFixture, id: "t1", title: "旧任务", status: "completed", completed_at: "2026-08-29T08:00:00Z", archived_at: "2026-08-30T08:00:00Z" };
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [];
@@ -451,18 +451,18 @@ describe("桌面便签核心交互", () => {
     const choices = [...document.querySelectorAll(".confirm-actions .confirm-button")];
     choices.find((button) => button.textContent === "撤销完成并撤销归档").click();
     await flushApp();
-    expect(invokeMock).toHaveBeenCalledWith("restore_archived_task", { owner: "测试用户", taskId: "t1", action: "undo_completion" });
+    expect(invokeMock).toHaveBeenCalledWith("restore_archived_task", { owner: "测试分类", taskId: "t1", action: "undo_completion" });
     // 再次询问并选择“仅撤销完成”
     await wrapper.find(".history-action-toggle").trigger("click");
     await wrapper.findAll(".history-actions button").find((button) => button.text() === "撤销完成").trigger("click");
     const choices2 = [...document.querySelectorAll(".confirm-actions .confirm-button")];
     choices2.find((button) => button.textContent === "仅撤销完成").click();
     await flushApp();
-    expect(invokeMock).toHaveBeenCalledWith("restore_archived_task", { owner: "测试用户", taskId: "t1", action: "undo_completion_only" });
+    expect(invokeMock).toHaveBeenCalledWith("restore_archived_task", { owner: "测试分类", taskId: "t1", action: "undo_completion_only" });
   });
 
   it("任务详情默认收起编辑与进度，点击操作按钮后展开", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     invokeMock.activeTasks = [{ ...taskFixture, id: "t1", title: "写周报" }];
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
@@ -480,7 +480,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("任务详情默认展示已添加节点，节点维护可直接进行", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [{ ...taskFixture, id: "t1", title: "写周报" }];
       if (command === "get_task_events") return [];
@@ -510,7 +510,7 @@ describe("桌面便签核心交互", () => {
 
   it("任务详情支持编辑、节点维护与进度（带记录时间）", async () => {
     invokeMock.activeTasks = [taskFixture];
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
     await flushApp();
@@ -536,7 +536,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("详情页完成任务可选择完成时间", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const task = { ...taskFixture, id: "t1", title: "写周报", status: "pending" };
     invokeMock.activeTasks = [task];
     invokeMock.mockImplementation(async (command, args) => {
@@ -576,7 +576,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("节点操作默认收起，点击行展开；已完成节点支持撤销完成", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const milestones = [
       { id: 1, task_id: "t1", title: "节点A", planned_at: null, completed_at: null, created_at: "2026-08-24T08:00:00Z", updated_at: "2026-08-24T08:00:00Z" },
       { id: 2, task_id: "t1", title: "节点B", planned_at: null, completed_at: "2026-08-24T08:00:00Z", created_at: "2026-08-24T08:00:00Z", updated_at: "2026-08-24T08:00:00Z" },
@@ -609,14 +609,14 @@ describe("桌面便签核心交互", () => {
     expect(inline.text()).toContain("撤销完成");
     expect(inline.text()).not.toContain("编辑");
     await inline.findAll("button").find((button) => button.text() === "撤销完成").trigger("click");
-    expect(invokeMock).toHaveBeenCalledWith("undo_complete_milestone", { owner: "测试用户", taskId: "t1", milestoneId: 2 });
+    expect(invokeMock).toHaveBeenCalledWith("undo_complete_milestone", { owner: "测试分类", taskId: "t1", milestoneId: 2 });
   });
 
   it("周期规则创建、编辑、作废操作调用对应接口", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
-    await openAddForUser(wrapper);
+    await openAddForCategory(wrapper);
     await wrapper.find('input[maxlength="80"]').setValue("每日运动");
     await wrapper.find("input[type=checkbox]").setValue(true);
     await wrapper.findAll("button").find((button) => button.text() === "添加任务").trigger("click");
@@ -627,7 +627,7 @@ describe("桌面便签核心交互", () => {
     const latestSetting = { ...recurringSettingFixture, title: "每日运动（已修改）", status: "生效中" };
     const recurringTask = { ...taskFixture, is_recurring: true, recurring_setting_id: recurringSettingFixture.id };
     invokeMock.activeTasks = [recurringTask];
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [recurringTask];
       if (command === "get_task") return recurringTask;
@@ -645,11 +645,11 @@ describe("桌面便签核心交互", () => {
     await flushApp();
     await wrapper.vm.$nextTick();
     expect(wrapper.find('.form-view input[maxlength="80"]').element.value).toBe("每日运动（已修改）");
-    expect(invokeMock).toHaveBeenCalledWith("list_recurring_task_settings", { owner: "测试用户" });
+    expect(invokeMock).toHaveBeenCalledWith("list_recurring_task_settings", { owner: "测试分类" });
   });
 
   it("接口错误显示应用内提示，不调用原生 alert", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [];
       if (command === "set_minimal_mode" || command === "is_auto_start_enabled") return false;
@@ -671,7 +671,7 @@ describe("桌面便签核心交互", () => {
 
   it("生命周期日志在任务详情中展示", async () => {
     invokeMock.activeTasks = [taskFixture];
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [taskFixture];
       if (command === "get_task_events") return [{ id: 1, event_type: "created", created_at: "2026-08-24T08:00:00Z" }];
@@ -687,7 +687,7 @@ describe("桌面便签核心交互", () => {
   });
 
   it("生命周期日志展示挂起、激活与系统自动归档事件", async () => {
-    localStorage.setItem("current-user", "测试用户");
+    localStorage.setItem("current-category", "测试分类");
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [{ ...taskFixture, id: "t1", title: "写周报" }];
       if (command === "get_task_events") return [
@@ -710,5 +710,64 @@ describe("桌面便签核心交互", () => {
     expect(text).toContain("挂起任务");
     expect(text).toContain("激活任务");
     expect(text).toContain("系统自动归档（隔天）");
+  });
+
+  it("顶部以标签卡片展示分类，当前分类高亮并显示待办数量", async () => {
+    localStorage.setItem("current-category", "工作");
+    localStorage.setItem("categories", JSON.stringify(["工作", "生活"]));
+    invokeMock.mockImplementation(async (command) => {
+      if (command === "list_active_tasks") return [taskFixture];
+      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      return null;
+    });
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    const tabs = wrapper.findAll(".category-tab");
+    expect(tabs.map((tab) => tab.text())).toEqual(["工作", "生活", "+"]);
+    expect(wrapper.find(".category-tab.active").text()).toBe("工作");
+    expect(wrapper.find(".category-count").text()).toBe("1 项");
+  });
+
+  it("点击顶部分类标签即切换分类并重新加载任务", async () => {
+    localStorage.setItem("current-category", "工作");
+    localStorage.setItem("categories", JSON.stringify(["工作", "生活"]));
+    invokeMock.mockImplementation(async (command) => {
+      if (command === "list_active_tasks") return [taskFixture];
+      if (command === "is_auto_start_enabled" || command === "set_minimal_mode") return false;
+      return null;
+    });
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    const tabs = wrapper.findAll(".category-tab");
+    await tabs[1].trigger("click");
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    expect(localStorage.getItem("current-category")).toBe("生活");
+    expect(invokeMock).toHaveBeenCalledWith("list_active_tasks", { owner: "生活" });
+    expect(wrapper.find(".category-tab.active").text()).toBe("生活");
+  });
+
+  it("点击“+”分类标签进入分类管理", async () => {
+    localStorage.setItem("current-category", "工作");
+    localStorage.setItem("categories", JSON.stringify(["工作"]));
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".category-tab-add").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".categories-view").exists()).toBe(true);
+  });
+
+  it("老版本的“用户”数据会自动迁移为分类", async () => {
+    localStorage.setItem("current-user", "旧昵称");
+    localStorage.setItem("users", JSON.stringify(["旧昵称", "家人"]));
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    expect(JSON.parse(localStorage.getItem("categories"))).toEqual(["旧昵称", "家人"]);
+    expect(localStorage.getItem("users")).toBeNull();
+    expect(wrapper.find(".category-tab.active").text()).toBe("旧昵称");
   });
 });

@@ -874,33 +874,33 @@ h1 {
   align-items: center;
 }
 
-.users-view {
+.categories-view {
   display: grid;
   align-content: start;
   gap: 12px;
 }
 
-.user-form {
+.category-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 6px;
   align-items: end;
 }
 
-.user-add-collapsed {
+.category-add-collapsed {
   justify-self: end;
 }
 
-.user-form .field {
+.category-form .field {
   margin-bottom: 0;
 }
 
-.user-list {
+.category-list {
   display: grid;
   gap: 8px;
 }
 
-.user-row {
+.category-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -909,8 +909,8 @@ h1 {
   border-bottom: 1px solid rgba(107, 84, 34, 0.09);
 }
 
-.user-main,
-.user-edit-input {
+.category-main,
+.category-edit-input {
   min-width: 0;
   padding: 7px 8px;
   color: rgba(37, 31, 20, 0.88);
@@ -920,16 +920,16 @@ h1 {
   border-radius: 7px;
 }
 
-.user-main.selected {
+.category-main.selected {
   background: var(--note-selected-bg);
   border-color: rgba(107, 84, 34, 0.22);
 }
 
-.user-edit-input {
+.category-edit-input {
   outline: none;
 }
 
-.user-actions {
+.category-actions {
   display: flex;
   gap: 2px;
   align-items: center;
@@ -1236,6 +1236,73 @@ h1 {
   color: rgba(64, 51, 27, 0.36);
 }
 
+/* 顶部分类标签卡片：像贴在本子上的分类页签，当前分类浮起，点一下就地切换。 */
+.category-tabs {
+  position: absolute;
+  top: 44px;
+  right: 24px;
+  left: 24px;
+  display: flex;
+  gap: 5px;
+  align-items: flex-end;
+  padding-bottom: 3px;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  z-index: 2;
+}
+
+.category-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.category-tab {
+  flex: 0 0 auto;
+  max-width: 104px;
+  padding: 4px 10px 5px;
+  overflow: hidden;
+  color: rgba(94, 75, 33, 0.58);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgba(255, 252, 228, 0.32);
+  border: 1px dashed rgba(107, 84, 34, 0.2);
+  border-radius: 8px 8px 5px 5px;
+  transform: translateY(1px);
+  transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease, color 120ms ease;
+}
+
+.category-tab:hover {
+  color: rgba(52, 43, 25, 0.86);
+  background: rgba(255, 252, 228, 0.62);
+}
+
+.category-tab.active {
+  color: rgba(40, 31, 15, 0.95);
+  font-weight: 600;
+  background: var(--note-menu-bg);
+  border: 1px solid rgba(107, 84, 34, 0.28);
+  box-shadow: 0 3px 8px rgba(60, 50, 30, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  transform: translateY(-2px);
+}
+
+.category-tab-add {
+  padding: 4px 9px 5px;
+  color: rgba(94, 75, 33, 0.5);
+  font-size: 13px;
+  border-style: dashed;
+}
+
+.category-count {
+  color: rgba(64, 51, 27, 0.36);
+  white-space: nowrap;
+}
+
+.content.has-tabs {
+  top: 84px;
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 120ms ease, transform 120ms ease;
@@ -1258,11 +1325,16 @@ h1 {
   left: 22px;
 }
 
-.size-small .user-form {
+.size-small .category-tabs {
+  right: 22px;
+  left: 22px;
+}
+
+.size-small .category-form {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.size-small .user-form .text-button {
+.size-small .category-form .text-button {
   grid-column: 2;
 }
 

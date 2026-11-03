@@ -240,8 +240,8 @@ pub fn run() {
             undo_complete_milestone,
             delete_milestone,
             reorder_milestones,
-            rename_user_data,
-            delete_user_data,
+            rename_category_data,
+            delete_category_data,
             create_recurring_task_setting,
             list_recurring_task_settings,
             update_recurring_task_setting,
@@ -953,7 +953,8 @@ fn reorder_tasks(state: State<DbState>, owner: String, ordered_ids: Vec<String>)
 }
 
 #[tauri::command]
-fn rename_user_data(
+// 分类重命名：分类在本地数据模型里就是任务归属键 owner，改名等于批量迁移该分类下的任务。
+fn rename_category_data(
     state: State<DbState>,
     old_owner: String,
     new_owner: String,
@@ -978,7 +979,8 @@ fn rename_user_data(
 }
 
 #[tauri::command]
-fn delete_user_data(state: State<DbState>, owner: String) -> Result<(), String> {
+// 删除分类：连同该分类下的任务、节点、生命周期记录与周期规则一并清除。
+fn delete_category_data(state: State<DbState>, owner: String) -> Result<(), String> {
     let owner = normalize_owner(&owner)?;
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
     conn.execute(

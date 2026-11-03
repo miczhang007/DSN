@@ -13,11 +13,11 @@ const MAX_START_REFRESH_DELAY_MS = 60_000;
 
 /**
  * @param {object} deps
- * @param {import("vue").Ref<string>} deps.currentUser  当前本地用户
+ * @param {import("vue").Ref<string>} deps.currentCategory  当前分类
  * @param {Function} deps.notify                        错误提示
  * @param {Function} deps.openTask                      打开任务详情
  */
-export function useTaskList({ currentUser, notify, openTask }) {
+export function useTaskList({ currentCategory, notify, openTask }) {
   const activeTasks = ref([]);
   const taskListEl = ref(null);
   const isDragging = ref(false);
@@ -28,11 +28,11 @@ export function useTaskList({ currentUser, notify, openTask }) {
   let startRefreshTimer = null;
 
   async function refreshActiveTasks() {
-    if (!currentUser.value) {
+    if (!currentCategory.value) {
       activeTasks.value = [];
       return;
     }
-    activeTasks.value = await invoke("list_active_tasks", { owner: currentUser.value });
+    activeTasks.value = await invoke("list_active_tasks", { owner: currentCategory.value });
     scheduleStartRefresh();
   }
 
@@ -54,7 +54,7 @@ export function useTaskList({ currentUser, notify, openTask }) {
       const delay = Math.min(nearest - now, MAX_START_REFRESH_DELAY_MS);
       startRefreshTimer = window.setTimeout(() => {
         startRefreshTimer = null;
-        if (currentUser.value) refreshActiveTasks().catch(() => {});
+        if (currentCategory.value) refreshActiveTasks().catch(() => {});
       }, delay);
     }
   }
@@ -115,10 +115,10 @@ export function useTaskList({ currentUser, notify, openTask }) {
   }
 
   async function persistOrder() {
-    if (!currentUser.value) return;
+    if (!currentCategory.value) return;
     try {
       await invoke("reorder_tasks", {
-        owner: currentUser.value,
+        owner: currentCategory.value,
         orderedIds: activeTasks.value.map((task) => task.id),
       });
     } catch (err) {

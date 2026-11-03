@@ -3,7 +3,7 @@
     <nav v-if="open" class="note-menu" aria-label="菜单" @click.stop>
       <button type="button" @click="$emit('history')">历史任务</button>
       <button type="button" @click="$emit('recurring-settings')">周期任务规则</button>
-      <button type="button" @click="$emit('users')">用户管理</button>
+      <button type="button" @click="$emit('categories')">分类管理</button>
       <div class="menu-section">
         <label>
           <span>便签大小</span>
@@ -72,7 +72,7 @@ defineProps({
 defineEmits([
   "history",
   "recurring-settings",
-  "users",
+  "categories",
   "about",
   "exit",
   "change-size",

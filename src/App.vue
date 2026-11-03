@@ -41,7 +41,7 @@
         :minimal-mode-enabled="minimalModeEnabled"
         @history="openHistory"
         @recurring-settings="openRecurringSettings"
-        @users="openUserManager"
+        @categories="openCategoryManager"
         @about="openAbout"
         @exit="exitApp"
         @change-size="changeNoteSize"
@@ -51,7 +51,32 @@
         @change-minimal="changeMinimalMode"
       />
 
-      <section v-if="view === 'home'" class="content">
+      <nav v-if="view === 'home'" class="category-tabs" role="tablist" aria-label="分类">
+        <button
+          v-for="(category, index) in categories"
+          :key="category"
+          ref="categoryTabEls"
+          class="category-tab"
+          type="button"
+          role="tab"
+          :class="{ active: currentCategory === category }"
+          :aria-selected="currentCategory === category"
+          :data-index="index"
+          @click.stop="selectCategoryTab(category)"
+        >
+          {{ category }}
+        </button>
+        <button
+          class="category-tab category-tab-add"
+          type="button"
+          :aria-label="categories.length ? '添加分类' : '新建第一个分类'"
+          @click.stop="openCategoryManager"
+        >
+          +
+        </button>
+      </nav>
+
+      <section v-if="view === 'home'" class="content has-tabs">
         <div v-if="activeTasks.length" ref="taskListEl" class="task-list" role="list">
           <article
             v-for="(task, index) in activeTasks"
@@ -94,71 +119,71 @@
         </div>
       </section>
 
-      <section v-else-if="view === 'users'" class="content users-view" @click.stop>
-        <div v-if="!userFormOpen" class="user-add-collapsed">
-          <button class="primary-action" type="button" @click="openUserForm">
-            添加用户
+      <section v-else-if="view === 'categories'" class="content categories-view" @click.stop>
+        <div v-if="!categoryFormOpen" class="category-add-collapsed">
+          <button class="primary-action" type="button" @click="openCategoryForm">
+            添加分类
           </button>
         </div>
-        <form v-else class="user-form" @submit.prevent="addUser">
+        <form v-else class="category-form" @submit.prevent="addCategory">
           <label class="field">
-            <span>新增用户</span>
+            <span>新增分类</span>
             <input
-              v-model.trim="userDraft"
+              v-model.trim="categoryDraft"
               type="text"
               maxlength="40"
-              autocomplete="username"
+              autocomplete="off"
               autofocus
             />
           </label>
-          <button class="primary-action" type="submit" :disabled="!userDraft">
+          <button class="primary-action" type="submit" :disabled="!categoryDraft">
             添加
           </button>
-          <button class="text-button" type="button" @click="closeUserForm">
+          <button class="text-button" type="button" @click="closeCategoryForm">
             收起
           </button>
         </form>
-        <div v-if="users.length" class="user-list">
-          <article v-for="user in users" :key="user" class="user-row">
+        <div v-if="categories.length" class="category-list">
+          <article v-for="category in categories" :key="category" class="category-row">
             <input
-              v-if="editingUser === user"
-              v-model.trim="editUserDraft"
-              class="user-edit-input"
+              v-if="editingCategory === category"
+              v-model.trim="editCategoryDraft"
+              class="category-edit-input"
               type="text"
               maxlength="40"
-              @keydown.enter.prevent="saveUserName(user)"
-              @keydown.esc.prevent="cancelEditUser"
+              @keydown.enter.prevent="saveCategoryName(category)"
+              @keydown.esc.prevent="cancelEditCategory"
             />
             <button
               v-else
-              class="user-main"
+              class="category-main"
               type="button"
-              :class="{ selected: currentUser === user }"
-              @click="switchUser(user)"
+              :class="{ selected: currentCategory === category }"
+              @click="switchCategory(category)"
             >
-              {{ user }}
+              {{ category }}
             </button>
-            <div class="user-actions">
+            <div class="category-actions">
               <button
-                v-if="editingUser === user"
+                v-if="editingCategory === category"
                 class="text-button"
                 type="button"
-                :disabled="!editUserDraft"
-                @click="saveUserName(user)"
+                :disabled="!editCategoryDraft"
+                @click="saveCategoryName(category)"
               >
                 保存
               </button>
-              <button v-else class="text-button" type="button" @click="startEditUser(user)">
+              <button v-else class="text-button" type="button" @click="startEditCategory(category)">
                 改名
               </button>
-              <button class="text-button danger" type="button" @click="deleteUser(user)">
+              <button class="text-button danger" type="button" @click="deleteCategory(category)">
                 删除
               </button>
             </div>
           </article>
         </div>
         <div v-else class="empty-state compact-empty">
-          <p>还没有用户</p>
+          <p>还没有分类</p>
         </div>
       </section>
 
@@ -494,7 +519,7 @@
       <AboutView v-else-if="view === 'about'" :version-label="versionLabel" @open-external="openExternal" />
 
       <footer class="note-footer">
-        <span v-if="currentUser">{{ currentUser }} · {{ activeTasks.length }} items</span>
+        <span v-if="currentCategory" class="category-count">{{ activeTasks.length }} 项</span>
         <span class="brand-mark">{{ productName }}</span>
       </footer>
     </section>
@@ -512,7 +537,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import AboutView from "./components/AboutView.vue";
 import AppMenu from "./components/AppMenu.vue";
@@ -525,20 +550,22 @@ import { useRecurringTaskSettings } from "./composables/useRecurringTaskSettings
 import { useTaskCreation } from "./composables/useTaskCreation.js";
 import { useTaskDetail } from "./composables/useTaskDetail.js";
 import { useTaskList } from "./composables/useTaskList.js";
-import { useUsers } from "./composables/useUsers.js";
+import { useCategories } from "./composables/useCategories.js";
 import { formatDeadline, formatTime } from "./lib/datetime.js";
 import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.4.3 - 2026-11-03 14:36";
+const versionLabel = "v1.4.3 - 2026-11-03 16:32";
 
 const view = ref("home");
 const menuOpen = ref(false);
-// 当前本地用户由 App 持有：任务列表与用户管理都需要它，放在最外层避免循环依赖。
-const currentUser = ref("");
-// 确认弹窗与历史操作展开状态被「详情 / 历史 / 用户」多处共用，统一由 App 持有。
+// 当前分类由 App 持有：任务列表与分类管理都需要它，放在最外层避免循环依赖。
+const currentCategory = ref("");
+// 顶部分类标签卡片：切换后把当前标签滚动到可见区域。
+const categoryTabEls = ref([]);
+// 确认弹窗与历史操作展开状态被「详情 / 历史 / 分类」多处共用，统一由 App 持有。
 const confirmation = ref(null);
 const expandedHistoryTaskId = ref("");
 
@@ -578,7 +605,7 @@ const {
   endRowDrag,
   handleTaskMainClick,
   persistOrder,
-} = useTaskList({ currentUser, notify: showNotice, openTask: openTaskDeferred });
+} = useTaskList({ currentCategory, notify: showNotice, openTask: openTaskDeferred });
 
 const {
   selectedTask,
@@ -626,35 +653,35 @@ const {
   saveTaskProgress,
   deleteTaskProgress,
 } = useTaskDetail({
-  currentUser,
+  currentCategory,
   view,
   menuOpen,
   notify: showNotice,
   confirmation,
   expandedHistoryTaskId,
   refreshActiveTasks,
-  openUserManager,
+  openCategoryManager,
   openConfirmation,
 });
 
 const {
-  users,
-  userDraft,
-  userFormOpen,
-  editingUser,
-  editUserDraft,
-  hydrate: hydrateUsers,
-  addUser,
-  openUserForm,
-  closeUserForm,
-  switchUser,
-  startEditUser,
-  cancelEditUser,
-  saveUserName,
-  deleteUser,
-  removeUser,
-} = useUsers({
-  currentUser,
+  categories,
+  categoryDraft,
+  categoryFormOpen,
+  editingCategory,
+  editCategoryDraft,
+  hydrate: hydrateCategories,
+  addCategory,
+  openCategoryForm,
+  closeCategoryForm,
+  switchCategory,
+  startEditCategory,
+  cancelEditCategory,
+  saveCategoryName,
+  deleteCategory,
+  removeCategory,
+} = useCategories({
+  currentCategory,
   view,
   openConfirmation,
   resetDetailState: resetSessionState,
@@ -662,7 +689,7 @@ const {
 });
 
 const { draft, createTask, addDraftMilestone, removeDraftMilestone, toggleFutureTask } = useTaskCreation({
-  currentUser,
+  currentCategory,
   view,
   refreshActiveTasks,
 });
@@ -689,7 +716,7 @@ const {
   recurringTaskStatusClass,
   recurringSummary,
 } = useRecurringTaskSettings({
-  currentUser,
+  currentCategory,
   view,
   menuOpen,
   notify: showNotice,
@@ -697,7 +724,7 @@ const {
   openConfirmation,
   refreshActiveTasks,
   draft,
-  openUserManager,
+  openCategoryManager,
 });
 
 const {
@@ -710,7 +737,7 @@ const {
   deleteArchivedTask,
   loadArchivedTasks,
 } = useHistory({
-  currentUser,
+  currentCategory,
   view,
   menuOpen,
   notify: showNotice,
@@ -718,7 +745,7 @@ const {
   expandedHistoryTaskId,
   openConfirmation,
   refreshActiveTasks,
-  openUserManager,
+  openCategoryManager,
 });
 
 const weekdayOptions = [
@@ -730,7 +757,7 @@ let recurringRefreshTimer = null;
 const viewTitle = computed(() => {
   const titles = {
     home: "Today",
-    users: "",
+    categories: "",
     add: "New",
     history: "History",
     "recurring-settings": "周期任务",
@@ -742,25 +769,28 @@ const viewTitle = computed(() => {
   return titles[view.value] || "";
 });
 
-const shouldExitFromUserManager = computed(() =>
-  view.value === "users" && !users.value.length && !userFormOpen.value,
+// 一个分类都没有时，"返回"应当直接退出而不是停在空的分类管理页。
+const shouldExitFromCategoryManager = computed(() =>
+  view.value === "categories" && !categories.value.length && !categoryFormOpen.value,
 );
 
 const backButtonLabel = computed(() =>
-  shouldExitFromUserManager.value ? "退出" : "返回",
+  shouldExitFromCategoryManager.value ? "退出" : "返回",
 );
 
 onMounted(async () => {
-  hydrateUsers();
+  hydrateCategories();
   loadSettings();
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("pointerdown", closeExpandedHistoryActions, true);
 
-  if (currentUser.value) {
+  if (currentCategory.value) {
     await refreshActiveTasks();
   }
+  await nextTick();
+  scrollActiveTabIntoView();
   recurringRefreshTimer = window.setInterval(() => {
-    if (currentUser.value) {
+    if (currentCategory.value) {
       refreshActiveTasks().catch(() => {});
     }
   }, 60_000);
@@ -790,6 +820,19 @@ function closeExpandedHistoryActions(event) {
   expandedHistoryTaskId.value = "";
 }
 
+function scrollActiveTabIntoView() {
+  const tabs = Array.isArray(categoryTabEls.value) ? categoryTabEls.value : [];
+  const active = tabs.find((tab) => tab?.classList?.contains("active"));
+  active?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+}
+
+async function selectCategoryTab(category) {
+  if (category === currentCategory.value) return;
+  await switchCategory(category);
+  await nextTick();
+  scrollActiveTabIntoView();
+}
+
 function handleKeydown(event) {
   if (event.key === "Escape") {
     menuOpen.value = false;
@@ -803,14 +846,14 @@ function goHome() {
   selectedTask.value = null;
   taskEvents.value = [];
   milestones.value = [];
-  if (currentUser.value) {
+  if (currentCategory.value) {
     refreshActiveTasks();
   }
 }
 
 async function handleBack() {
   expandedHistoryTaskId.value = "";
-  if (shouldExitFromUserManager.value) {
+  if (shouldExitFromCategoryManager.value) {
     await exitApp();
     return;
   }
@@ -839,8 +882,8 @@ async function handleBack() {
 }
 
 function openAdd() {
-  if (!currentUser.value) {
-    openUserManager();
+  if (!currentCategory.value) {
+    openCategoryManager();
     return;
   }
   menuOpen.value = false;
@@ -848,14 +891,14 @@ function openAdd() {
   view.value = "add";
 }
 
-function openUserManager() {
+function openCategoryManager() {
   menuOpen.value = false;
   expandedHistoryTaskId.value = "";
-  userDraft.value = "";
-  userFormOpen.value = !users.value.length;
-  editingUser.value = "";
-  editUserDraft.value = "";
-  view.value = "users";
+  categoryDraft.value = "";
+  categoryFormOpen.value = !categories.value.length;
+  editingCategory.value = "";
+  editCategoryDraft.value = "";
+  view.value = "categories";
 }
 
 function openAbout() {
@@ -901,7 +944,7 @@ async function confirmAction() {
   }
 }
 
-// 切换或删除用户时清空详情残留与历史列表，避免把上一个用户的数据带过来。
+// 切换或删除分类时清空详情残留与历史列表，避免把上一个分类的数据带过来。
 function resetSessionState() {
   resetDetailState();
   resetHistoryState();

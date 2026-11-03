@@ -22,7 +22,7 @@
 
 ### 前端（Vitest + jsdom）
 
-- `tests/App.spec.js`：进入应用、用户管理、任务创建/详情/节点/进度、历史撤销、周期规则、错误提示、生命周期展示等核心交互。
+- `tests/App.spec.js`：进入应用、分类管理、任务创建/详情/节点/进度、历史撤销、周期规则、错误提示、生命周期展示等核心交互。
 - `tests/recurring-task-change.spec.js`：周期任务相关的一次性变更回归。
 - `tests/datetime.spec.js`、`tests/labels.spec.js`：日期换算、状态与事件文案等纯函数。
 - `tests/errors.spec.js`：错误文案提取与全局错误兜底（含 Vue 异步事件处理器异常的捕获路径）。
