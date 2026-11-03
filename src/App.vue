@@ -56,30 +56,60 @@
         @minimize="minimizeWindow"
       />
 
-      <nav v-if="view === 'home'" class="category-tabs" role="tablist" aria-label="分类">
-        <button
-          v-for="(category, index) in categories"
-          :key="category"
-          ref="categoryTabEls"
-          class="category-tab"
-          type="button"
-          role="tab"
-          :class="{ active: currentCategory === category }"
-          :aria-selected="currentCategory === category"
-          :data-index="index"
-          @click.stop="selectCategoryTab(category)"
+      <div
+        v-if="view === 'home'"
+        class="category-tabs-wrap"
+        :class="{ 'has-scroll': canScrollTabsLeft || canScrollTabsRight }"
+      >
+        <nav
+          ref="categoryTabsEl"
+          class="category-tabs"
+          role="tablist"
+          aria-label="分类"
+          @scroll.passive="updateTabScrollState"
         >
-          {{ category }}
+          <button
+            v-for="(category, index) in categories"
+            :key="category"
+            ref="categoryTabEls"
+            class="category-tab"
+            type="button"
+            role="tab"
+            :class="{ active: currentCategory === category }"
+            :aria-selected="currentCategory === category"
+            :data-index="index"
+            @click.stop="selectCategoryTab(category)"
+          >
+            {{ category }}
+          </button>
+          <button
+            class="category-tab category-tab-add"
+            type="button"
+            :aria-label="categories.length ? '添加分类' : '新建第一个分类'"
+            @click.stop="openCategoryManager"
+          >
+            +
+          </button>
+        </nav>
+        <button
+          v-if="canScrollTabsLeft"
+          class="tab-scroll tab-scroll-left"
+          type="button"
+          aria-label="向左切换分类"
+          @click.stop="scrollTabs(-1)"
+        >
+          ‹
         </button>
         <button
-          class="category-tab category-tab-add"
+          v-if="canScrollTabsRight"
+          class="tab-scroll tab-scroll-right"
           type="button"
-          :aria-label="categories.length ? '添加分类' : '新建第一个分类'"
-          @click.stop="openCategoryManager"
+          aria-label="向右切换分类"
+          @click.stop="scrollTabs(1)"
         >
-          +
+          ›
         </button>
-      </nav>
+      </div>
 
       <section v-if="view === 'home'" class="content has-tabs">
         <div v-if="activeTasks.length" ref="taskListEl" class="task-list" role="list">
@@ -177,8 +207,8 @@
             <input
               v-model.trim="categoryDraft"
               type="text"
-              maxlength="40"
-              placeholder="新分类名称"
+              maxlength="120"
+              placeholder="新分类名称，可用逗号或空格分隔多个"
               autocomplete="off"
             />
             <button class="text-button" type="submit" :disabled="!categoryDraft">
@@ -542,7 +572,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import AboutView from "./components/AboutView.vue";
@@ -562,7 +592,7 @@ import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 22:46";
+const versionLabel = "v1.5.0 - 2026-11-03 23:00";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -570,6 +600,9 @@ const menuOpen = ref(false);
 const currentCategory = ref("");
 // 顶部分类标签卡片：切换后把当前标签滚动到可见区域。
 const categoryTabEls = ref([]);
+const categoryTabsEl = ref(null);
+const canScrollTabsLeft = ref(false);
+const canScrollTabsRight = ref(false);
 // 确认弹窗与历史操作展开状态被「详情 / 历史 / 分类」多处共用，统一由 App 持有。
 const confirmation = ref(null);
 const expandedHistoryTaskId = ref("");
@@ -827,10 +860,28 @@ function closeExpandedHistoryActions(event) {
   expandedHistoryTaskId.value = "";
 }
 
+function updateTabScrollState() {
+  const el = categoryTabsEl.value;
+  if (!el) {
+    canScrollTabsLeft.value = false;
+    canScrollTabsRight.value = false;
+    return;
+  }
+  canScrollTabsLeft.value = el.scrollLeft > 4;
+  canScrollTabsRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+}
+
+function scrollTabs(direction) {
+  const el = categoryTabsEl.value;
+  if (!el) return;
+  el.scrollBy({ left: direction * Math.round(el.clientWidth * 0.7), behavior: "smooth" });
+}
+
 function scrollActiveTabIntoView() {
   const tabs = Array.isArray(categoryTabEls.value) ? categoryTabEls.value : [];
   const active = tabs.find((tab) => tab?.classList?.contains("active"));
   active?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  updateTabScrollState();
 }
 
 async function selectCategoryTab(category) {
@@ -838,7 +889,14 @@ async function selectCategoryTab(category) {
   await switchCategory(category);
   await nextTick();
   scrollActiveTabIntoView();
+  updateTabScrollState();
 }
+
+// 分类数量或窗口宽度变化时重新判断是否需要左右切换
+watch(categories, async () => {
+  await nextTick();
+  updateTabScrollState();
+});
 
 function handleKeydown(event) {
   if (event.key === "Escape") {

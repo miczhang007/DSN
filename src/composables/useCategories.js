@@ -38,14 +38,31 @@ export function useCategories({ currentCategory, view, openConfirmation, resetDe
     }
   }
 
+  // 支持一次输入多个分类：逗号、顿号、分号、斜杠或空格分隔
+  function parseCategoryNames(text) {
+    return String(text || "")
+      .split(/[\s,，、;；/]+/)
+      .map((name) => normalizeCategoryName(name))
+      .filter(Boolean);
+  }
+
   async function addCategory() {
-    const nextCategory = normalizeCategoryName(categoryDraft.value);
-    if (!nextCategory || categories.value.includes(nextCategory)) return;
-    categories.value.push(nextCategory);
+    const names = parseCategoryNames(categoryDraft.value);
+    if (!names.length) return;
+    const added = [];
+    names.forEach((name) => {
+      if (categories.value.includes(name)) return;
+      categories.value.push(name);
+      added.push(name);
+    });
+    if (!added.length) {
+      categoryDraft.value = "";
+      return;
+    }
     saveCategories(categories.value);
     categoryDraft.value = "";
     categoryFormOpen.value = false;
-    await switchCategory(nextCategory);
+    await switchCategory(added[0]);
   }
 
   function openCategoryForm() {

@@ -785,6 +785,27 @@ describe("桌面便签核心交互", () => {
     expect(wrapper.find(".brand-mark").text()).toBe("老张的便签");
   });
 
+  it("分类页支持一次添加多个分类", async () => {
+    localStorage.setItem("current-category", "工作");
+    localStorage.setItem("categories", JSON.stringify(["工作"]));
+    invokeMock.activeTasks = [];
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    const managerButton = wrapper.findAll("button").find((button) => button.text() === "分类管理");
+    await managerButton.trigger("click");
+    await wrapper.vm.$nextTick();
+    const input = wrapper.find('.category-add-line input[placeholder*="新分类名称"]');
+    await input.setValue("生活，家人、学习");
+    await wrapper.find("form.category-form").trigger("submit");
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    expect(JSON.parse(localStorage.getItem("categories"))).toEqual(["工作", "生活", "家人", "学习"]);
+    // 添加完成后切到第一个新增分类
+    expect(localStorage.getItem("current-category")).toBe("生活");
+  });
+
   it("老版本的“用户”数据会自动迁移为分类", async () => {
     localStorage.setItem("current-user", "旧昵称");
     localStorage.setItem("users", JSON.stringify(["旧昵称", "家人"]));

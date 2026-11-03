@@ -169,6 +169,7 @@
 | 日期 | 变更 | 影响文件 |
 | --- | --- | --- |
 | 2026-11-03 | 细节校准：去掉纸张外阴影、胶带改为宽幅半透明撕边双面胶、纸张加入纤维纹理、任务勾选框改圆角方块、新增细楷字体（霞鹜文楷 Light）并默认细楷 | `src/styles.css`、`src/components/AppMenu.vue`、`src/composables/useNoteSettings.js` |
+| 2026-11-03 | 分类标签超出时可左右切换（两端圆形箭头 + 边缘渐隐），分类管理支持一次输入多个分类（逗号/顿号/分号/空格分隔） | `src/App.vue`、`src/composables/useCategories.js`、`src/styles.css` |
 | 2026-11-03 | 修复弹框字体：把选中字体类同步挂到 <html>，teleport 到 body 的确认框与提示条也能用主手写字体 | `src/composables/useNoteSettings.js`、`tests/App.spec.js` |
 | 2026-11-03 | 产品简介页按新视觉重做：手写产品名 + 版本胶囊、虚线信息行、手写体链接与页脚说明，页头改为「返回 + 产品简介」 | `src/components/AboutView.vue`、`src/styles.css` |
 | 2026-11-03 | 统一二级页面页头：全部改为「返回 + 页面标题」同一行（以历史任务为准），移除新建任务/分类/周期规则页正文里重复的大标题 | `src/App.vue`、`src/styles.css` |
