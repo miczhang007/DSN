@@ -1373,3 +1373,198 @@ h1 {
   color: var(--ink);
   letter-spacing: 0.5px;
 }
+
+/* --------------------------------------------------------------------------
+   周期规则列表 / 分类新增行 / 设置面板控件
+   -------------------------------------------------------------------------- */
+
+.rule-list {
+  display: grid;
+}
+
+.rule-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1.5px dashed var(--line);
+}
+
+.rule-row.voided .rule-title,
+.rule-row.voided .rule-meta {
+  color: var(--ink-faint);
+}
+
+.rule-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  text-align: left;
+}
+
+.rule-title {
+  font-family: var(--font-hand);
+  font-size: 20px;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.rule-meta {
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+}
+
+.rule-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.rule-action {
+  padding: 4px 9px;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  border-left: 1.2px solid rgba(126, 100, 44, 0.24);
+}
+
+.rule-action:first-child {
+  border-left: 0;
+}
+
+.rule-action.danger {
+  color: #a34432;
+}
+
+.dashed-action {
+  justify-self: stretch;
+  margin-top: 8px;
+  padding: 10px 12px;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  text-align: center;
+  border: 1.5px dashed rgba(126, 100, 44, 0.34);
+  border-radius: 999px;
+}
+
+.dashed-action:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.category-add-row {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.field-label {
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.category-add-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1.4px dashed rgba(126, 100, 44, 0.34);
+}
+
+.category-add-line input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 2px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.menu-nav {
+  display: grid;
+  gap: 2px;
+}
+
+.menu-group {
+  display: grid;
+  gap: 9px;
+  padding: 12px 0;
+  border-top: 1.2px solid rgba(126, 100, 44, 0.16);
+}
+
+.theme-dots {
+  display: flex;
+  gap: 10px;
+}
+
+.note-menu .theme-dot {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1.5px solid rgba(126, 100, 44, 0.32);
+  border-radius: 50%;
+}
+
+.note-menu .theme-dot.active {
+  box-shadow:
+    0 0 0 2px var(--paper-hi),
+    0 0 0 3.5px rgba(126, 100, 44, 0.55);
+}
+
+.segmented {
+  display: inline-flex;
+  justify-self: start;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1.2px solid rgba(126, 100, 44, 0.2);
+  border-radius: 999px;
+}
+
+.note-menu .segmented button {
+  padding: 4px 11px;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  text-align: center;
+  border-radius: 999px;
+}
+
+.note-menu .segmented button.active {
+  color: var(--ink);
+  background: var(--paper-hi);
+  box-shadow: 0 1px 3px rgba(74, 56, 18, 0.18);
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 0;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  border-top: 1.2px solid rgba(126, 100, 44, 0.16);
+}
+
+.menu-row select {
+  padding: 5px 8px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1.3px solid rgba(126, 100, 44, 0.22);
+  border-radius: 8px;
+}
+
+.note-menu .menu-footer-action {
+  padding: 9px 6px;
+  border-top: 1.2px solid rgba(126, 100, 44, 0.14);
+  border-radius: 0;
+}

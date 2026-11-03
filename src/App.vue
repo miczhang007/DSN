@@ -130,29 +130,7 @@
       </section>
 
       <section v-else-if="view === 'categories'" class="content categories-view" @click.stop>
-        <div v-if="!categoryFormOpen" class="category-add-collapsed">
-          <button class="primary-action" type="button" @click="openCategoryForm">
-            添加分类
-          </button>
-        </div>
-        <form v-else class="category-form" @submit.prevent="addCategory">
-          <label class="field">
-            <span>新增分类</span>
-            <input
-              v-model.trim="categoryDraft"
-              type="text"
-              maxlength="40"
-              autocomplete="off"
-              autofocus
-            />
-          </label>
-          <button class="primary-action" type="submit" :disabled="!categoryDraft">
-            添加
-          </button>
-          <button class="text-button" type="button" @click="closeCategoryForm">
-            收起
-          </button>
-        </form>
+        <h1 class="form-title">分类</h1>
         <div v-if="categories.length" class="category-list">
           <article v-for="category in categories" :key="category" class="category-row">
             <input
@@ -195,6 +173,21 @@
         <div v-else class="empty-state compact-empty">
           <p>还没有分类</p>
         </div>
+        <form class="category-form category-add-row" @submit.prevent="addCategory">
+          <span class="field-label">新增分类</span>
+          <div class="category-add-line">
+            <input
+              v-model.trim="categoryDraft"
+              type="text"
+              maxlength="40"
+              placeholder="新分类名称"
+              autocomplete="off"
+            />
+            <button class="text-button" type="submit" :disabled="!categoryDraft">
+              添加
+            </button>
+          </div>
+        </form>
       </section>
 
       <section v-else-if="view === 'add'" class="content form-view" @click.stop>
@@ -316,18 +309,27 @@
       </section>
 
       <section v-else-if="view === 'recurring-settings'" class="content recurring-settings-view" @click.stop>
-        <div v-if="recurringSettings.length" class="history-list">
-          <article v-for="setting in recurringSettings" :key="setting.id" class="history-item">
-            <button class="history-main" type="button" @click="openRecurringSettingDetail(setting)"><span>{{ setting.title }}</span><small>{{ recurringSummary(setting) }} · {{ setting.status }}</small></button>
-            <button class="icon-button history-action-toggle" type="button" aria-label="更多操作" @click="toggleHistoryActions(`setting:${setting.id}`)"><span class="vertical-dots" aria-hidden="true"><span></span><span></span><span></span></span></button>
-            <div v-if="expandedHistoryTaskId === `setting:${setting.id}`" class="history-actions" @click.stop>
-              <button v-if="setting.status !== '已作废'" class="text-button" type="button" @click="openRecurringSetting(setting)">编辑规则</button>
-              <button v-if="setting.status === '生效中'" class="text-button danger" type="button" @click="voidRecurringSetting(setting)">作废</button>
-              <button v-if="setting.status === '已作废'" class="text-button danger" type="button" @click="deleteRecurringSetting(setting)">删除</button>
+        <h1 class="form-title">周期任务规则</h1>
+        <div v-if="recurringSettings.length" class="rule-list">
+          <article
+            v-for="setting in recurringSettings"
+            :key="setting.id"
+            class="rule-row"
+            :class="{ voided: setting.status === '已作废' }"
+          >
+            <button class="rule-main" type="button" @click="openRecurringSettingDetail(setting)">
+              <span class="rule-title">{{ setting.title }}</span>
+              <span class="rule-meta">{{ recurringSummary(setting) }} · {{ setting.status }}</span>
+            </button>
+            <div class="rule-actions">
+              <button v-if="setting.status !== '已作废'" class="rule-action" type="button" @click="openRecurringSetting(setting)">编辑</button>
+              <button v-if="setting.status === '生效中'" class="rule-action danger" type="button" @click="voidRecurringSetting(setting)">作废</button>
+              <button v-if="setting.status === '已作废'" class="rule-action danger" type="button" @click="deleteRecurringSetting(setting)">删除</button>
             </div>
           </article>
         </div>
-        <div v-else class="empty-state"><p>还没有周期任务设置</p></div>
+        <p v-else class="section-empty">还没有周期任务设置</p>
+        <button class="dashed-action" type="button" @click="openRecurringSetting()">+ 新建周期任务</button>
       </section>
 
       <section v-else-if="view === 'recurring-setting'" class="content form-view" @click.stop>
@@ -565,7 +567,7 @@ import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 20:18";
+const versionLabel = "v1.5.0 - 2026-11-03 20:27";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -768,7 +770,7 @@ const viewTitle = computed(() => {
     categories: "",
     add: "",
     history: "历史任务",
-    "recurring-settings": "周期任务",
+    "recurring-settings": "",
     "recurring-setting": "周期设置",
     "recurring-setting-detail": "规则详情",
     detail: "",

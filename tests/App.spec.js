@@ -122,10 +122,10 @@ describe("桌面便签核心交互", () => {
     await rulesButton.trigger("click");
     await wrapper.vm.$nextTick();
     expect(wrapper.find(".recurring-settings-view").exists()).toBe(true);
-    await wrapper.find(".history-action-toggle").trigger("click");
-    expect(wrapper.find(".history-actions").text()).toContain("删除");
-    expect(wrapper.find(".history-actions").text()).not.toContain("编辑规则");
-    expect(wrapper.find(".history-actions").text()).not.toContain("作废");
+    const ruleActions = wrapper.find(".rule-actions").text();
+    expect(ruleActions).toContain("删除");
+    expect(ruleActions).not.toContain("编辑");
+    expect(ruleActions).not.toContain("作废");
   });
 
   it("已作废规则的删除操作会打开应用内确认弹窗", async () => {
@@ -137,8 +137,7 @@ describe("桌面便签核心交互", () => {
     const rulesButton = wrapper.findAll("button").find((button) => button.text() === "周期任务规则");
     await rulesButton.trigger("click");
     await wrapper.vm.$nextTick();
-    await wrapper.find(".history-action-toggle").trigger("click");
-    await wrapper.find(".history-actions button").trigger("click");
+    await wrapper.find(".rule-action").trigger("click");
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
     expect(document.body.textContent).toContain("删除周期任务规则");
   });
@@ -159,13 +158,12 @@ describe("桌面便签核心交互", () => {
     const rulesButton = wrapper.findAll("button").find((button) => button.text() === "周期任务规则");
     await rulesButton.trigger("click");
     await wrapper.vm.$nextTick();
-    await wrapper.find(".history-action-toggle").trigger("click");
-    const voidButton = wrapper.findAll(".history-actions button").find((button) => button.text() === "作废");
+    const voidButton = wrapper.findAll(".rule-action").find((button) => button.text() === "作废");
     await voidButton.trigger("click");
     expect(document.querySelector(".confirm-button").textContent).toContain("确认作废");
   });
 
-  it("离开规则列表后自动收起弹出菜单", async () => {
+  it("点击规则行进入规则详情", async () => {
     localStorage.setItem("current-category", "测试分类");
     const wrapper = mountApp();
     await wrapper.vm.$nextTick();
@@ -173,11 +171,9 @@ describe("桌面便签核心交互", () => {
     const rulesButton = wrapper.findAll("button").find((button) => button.text() === "周期任务规则");
     await rulesButton.trigger("click");
     await wrapper.vm.$nextTick();
-    await wrapper.find(".history-action-toggle").trigger("click");
-    expect(wrapper.find(".history-actions").exists()).toBe(true);
-    await wrapper.find(".history-main").trigger("click");
+    await wrapper.find(".rule-main").trigger("click");
     await wrapper.vm.$nextTick();
-    expect(wrapper.find(".history-actions").exists()).toBe(false);
+    expect(wrapper.find(".recurring-detail-summary").exists()).toBe(true);
   });
 
   it("普通任务添加提交标题和节点参数", async () => {
