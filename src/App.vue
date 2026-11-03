@@ -562,7 +562,7 @@ import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 22:41";
+const versionLabel = "v1.5.0 - 2026-11-03 22:46";
 
 const view = ref("home");
 const menuOpen = ref(false);

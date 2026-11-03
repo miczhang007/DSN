@@ -17,6 +17,14 @@ const DEFAULT_SIZE = "medium";
 const DEFAULT_THEME = "yellow";
 const DEFAULT_FONT = "xikai";
 const DEFAULT_SIGNATURE = "桌面便签";
+const FONT_CLASSES = ["font-maobi", "font-xingshu", "font-yingbi", "font-xikai", "font-kaishu"];
+
+// 弹窗与提示条 teleport 到 body，拿不到便签上的字体类，
+// 因此把选中的字体同时挂到 <html>，让 body 级元素也能继承主字体。
+function applyFontClass(font) {
+  const root = document.documentElement;
+  FONT_CLASSES.forEach((name) => root.classList.toggle(name, name === `font-${font}`));
+}
 const DEFAULT_POSITION = "top-right";
 
 export function useNoteSettings({ closeMenu, notify } = {}) {
@@ -33,6 +41,7 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
     noteTheme.value = localStorage.getItem(KEY_THEME) || DEFAULT_THEME;
     noteFont.value = localStorage.getItem(KEY_FONT) || DEFAULT_FONT;
     noteSignature.value = localStorage.getItem(KEY_SIGNATURE) ?? DEFAULT_SIGNATURE;
+    applyFontClass(noteFont.value);
     notePosition.value = localStorage.getItem(KEY_POSITION) || DEFAULT_POSITION;
     localStorage.removeItem("minimal-mode");
   }
@@ -73,6 +82,7 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
   function changeNoteFont(font) {
     noteFont.value = font;
     localStorage.setItem(KEY_FONT, font);
+    applyFontClass(font);
   }
 
   async function changeNotePosition(position) {

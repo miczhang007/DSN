@@ -767,6 +767,8 @@ describe("桌面便签核心交互", () => {
     await wrapper.vm.$nextTick();
     expect(localStorage.getItem("note-font")).toBe("xingshu");
     expect(wrapper.find(".app-shell").classes()).toContain("font-xingshu");
+    // 弹窗 teleport 到 body，字体类需同时挂到 <html> 才能生效
+    expect(document.documentElement.classList.contains("font-xingshu")).toBe(true);
   });
 
   it("设置面板可自定义右下角签名", async () => {
