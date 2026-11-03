@@ -23,6 +23,14 @@
           {{ viewTitle }}
         </h1>
         <div class="header-actions" v-if="view === 'home'">
+          <button
+            class="icon-button minimize-button"
+            type="button"
+            aria-label="最小化窗口"
+            @click.stop="minimizeWindow"
+          >
+            <span class="minimize-glyph" aria-hidden="true"></span>
+          </button>
           <button class="icon-button add-button" type="button" aria-label="添加任务" @click.stop="openAdd">
             +
           </button>
@@ -592,7 +600,7 @@ import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 23:00";
+const versionLabel = "v1.5.0 - 2026-11-03 23:05";
 
 const view = ref("home");
 const menuOpen = ref(false);

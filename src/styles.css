@@ -222,6 +222,18 @@ h1 {
   background: rgba(255, 255, 255, 0.45);
 }
 
+.minimize-button {
+  width: 22px;
+}
+
+.minimize-glyph {
+  display: block;
+  width: 11px;
+  height: 1.6px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
 .vertical-dots {
   display: grid;
   gap: 4px;
