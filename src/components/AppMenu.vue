@@ -85,7 +85,7 @@ defineProps({
   open: { type: Boolean, default: false },
   noteSize: { type: String, default: "medium" },
   noteTheme: { type: String, default: "yellow" },
-  noteFont: { type: String, default: "yingbi" },
+  noteFont: { type: String, default: "xikai" },
   notePosition: { type: String, default: "top-right" },
   autoStartEnabled: { type: Boolean, default: false },
 });
@@ -111,8 +111,8 @@ const sizeOptions = [
 ];
 
 const fontOptions = [
+  { label: "细楷", value: "xikai" },
   { label: "硬笔", value: "yingbi" },
-  { label: "细笔", value: "xibi" },
   { label: "毛笔", value: "maobi" },
   { label: "行书", value: "xingshu" },
   { label: "楷体", value: "kaishu" },

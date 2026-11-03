@@ -16,8 +16,9 @@
 }
 
 @font-face {
-  font-family: "StickyHand Xibi";
-  src: url("./assets/fonts/StickyHandXibi.woff2") format("woff2");
+  font-family: "StickyHand Xikai";
+  src: url("./assets/fonts/StickyHandXikai.woff2") format("woff2");
+  font-weight: 300;
   font-display: swap;
 }
 
@@ -30,6 +31,13 @@
 :root {
   color: #43331a;
   background: transparent;
+  --paper: #f7e6a3;
+  --paper-hi: #fff3c8;
+  --ink: #43331a;
+  --ink-soft: rgba(67, 51, 26, 0.66);
+  --ink-faint: rgba(67, 51, 26, 0.42);
+  --font-hand: "StickyHand Xikai", "KaiTi", "楷体", cursive;
+  --hand-weight: 300;
   font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -81,13 +89,14 @@ button {
   --chip-red-ink: #a34432;
   --chip-tan-bg: rgba(233, 214, 168, 0.8);
   --chip-tan-ink: #7d6330;
-  --font-hand: "StickyHand Maobi", "KaiTi", "楷体", cursive;
+  --font-hand: "StickyHand Xikai", "KaiTi", "楷体", cursive;
+  --hand-weight: 300;
   --font-ui: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
 
   width: 100vw;
   height: 100vh;
-  padding: 9px 7px 7px;
-  background: transparent;
+  padding: 0;
+  background: var(--paper);
 }
 
 .theme-yellow { --paper: #f7e6a3; --paper-hi: #fff3c8; }
@@ -100,7 +109,7 @@ button {
 .font-maobi   { --font-hand: "StickyHand Maobi", "KaiTi", "楷体", cursive; }
 .font-xingshu { --font-hand: "StickyHand Xingshu", "KaiTi", "楷体", cursive; }
 .font-yingbi  { --font-hand: "StickyHand Yingbi", "KaiTi", "楷体", cursive; }
-.font-xibi    { --font-hand: "StickyHand Xibi", "KaiTi", "楷体", cursive; }
+.font-xikai   { --font-hand: "StickyHand Xikai", "KaiTi", "楷体", cursive; --hand-weight: 300; }
 .font-kaishu  { --font-hand: "KaiTi", "楷体", "STKaiti", cursive; }
 
 .note {
@@ -114,8 +123,8 @@ button {
     radial-gradient(85% 62% at 102% 104%, rgba(120, 92, 32, 0.1), transparent 68%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(120, 92, 32, 0.03)),
     var(--paper);
-  border: 1px solid rgba(126, 100, 44, 0.16);
-  border-radius: 12px;
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
   cursor: default;
 }
@@ -144,20 +153,22 @@ button {
 /* 顶部胶带：复用 .pin-shadow 元素 */
 .pin-shadow {
   position: absolute;
-  top: -6px;
+  top: 0;
   left: 50%;
-  width: 150px;
-  height: 34px;
-  margin-left: -75px;
+  width: 146px;
+  height: 30px;
+  margin-left: -73px;
   background:
-    linear-gradient(180deg, rgba(255, 253, 244, 0.62), rgba(244, 236, 208, 0.5) 58%, rgba(232, 220, 184, 0.56)),
-    rgba(250, 243, 220, 0.4);
-  opacity: 0.9;
-  transform: rotate(-1.8deg);
+    repeating-linear-gradient(96deg, rgba(255, 255, 255, 0.22) 0 2px, rgba(255, 255, 255, 0) 2px 6px),
+    linear-gradient(180deg, rgba(255, 252, 240, 0.66), rgba(243, 234, 204, 0.5) 60%, rgba(230, 217, 180, 0.55)),
+    rgba(250, 243, 220, 0.42);
+  opacity: 0.86;
+  transform: rotate(-1.4deg);
+  filter: blur(0.25px);
   box-shadow:
-    0 3px 8px rgba(80, 62, 24, 0.14),
-    inset 0 -5px 9px rgba(120, 98, 52, 0.09),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    0 2px 5px rgba(80, 62, 24, 0.12),
+    inset 0 -4px 8px rgba(120, 98, 52, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
   clip-path: polygon(
     0 12%, 4% 5%, 9% 13%, 15% 5%, 22% 12%, 30% 4%, 38% 11%, 46% 4%, 54% 12%, 62% 4%,
     70% 11%, 78% 4%, 86% 12%, 93% 5%, 100% 12%,
@@ -192,7 +203,7 @@ h1 {
   margin: 0;
   font-family: var(--font-hand);
   font-size: 27px;
-  font-weight: 600;
+  font-weight: var(--hand-weight, 600);
   line-height: 1.1;
   color: var(--ink);
   letter-spacing: 0.5px;
@@ -423,6 +434,7 @@ h1 {
   gap: 7px;
   align-items: center;
   font-family: var(--font-hand);
+  font-weight: var(--hand-weight, 600);
   font-size: 21px;
   line-height: 1.34;
   color: var(--ink);
@@ -727,6 +739,7 @@ h1 {
 
 .milestone-title {
   font-family: var(--font-hand);
+  font-weight: var(--hand-weight, 600);
   font-size: 17px;
   line-height: 1.3;
   color: var(--ink);
@@ -769,6 +782,7 @@ h1 {
 
 .detail-summary strong {
   font-family: var(--font-hand);
+  font-weight: var(--hand-weight, 600);
   font-size: 23px;
   line-height: 1.3;
   color: var(--ink);
@@ -1091,7 +1105,8 @@ h1 {
   margin: 0 0 10px;
   color: var(--ink, #43331a);
   font-family: var(--font-hand, "KaiTi"), cursive;
-  font-size: 20px;
+  font-weight: var(--hand-weight, 600);
+  font-size: 22px;
 }
 
 .confirm-dialog p {
@@ -1379,7 +1394,7 @@ h1 {
   margin: 0;
   font-family: var(--font-hand);
   font-size: 27px;
-  font-weight: 600;
+  font-weight: var(--hand-weight, 600);
   color: var(--ink);
   letter-spacing: 0.5px;
 }
