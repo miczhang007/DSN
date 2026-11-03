@@ -198,20 +198,25 @@
       </section>
 
       <section v-else-if="view === 'add'" class="content form-view" @click.stop>
-        <label class="field">
-          <span>任务</span>
-          <input v-model.trim="draft.title" type="text" maxlength="80" autofocus />
-        </label>
+        <h1 class="form-title">新任务</h1>
+        <input
+          v-model.trim="draft.title"
+          class="task-input"
+          type="text"
+          maxlength="80"
+          placeholder="写点什么…"
+          autofocus
+        />
         <div class="task-type-toggles">
-          <label class="check-field recurring-toggle">
+          <label class="toggle-pill recurring-toggle">
             <input v-model="draft.isRecurring" type="checkbox" />
             <span>周期任务</span>
           </label>
-          <label v-if="!draft.isRecurring" class="check-field">
+          <label v-if="!draft.isRecurring" class="toggle-pill">
             <input v-model="draft.isUrgent" type="checkbox" />
             <span>紧急</span>
           </label>
-          <label v-if="!draft.isRecurring" class="check-field">
+          <label v-if="!draft.isRecurring" class="toggle-pill">
             <input v-model="draft.isFuture" type="checkbox" @change="toggleFutureTask" />
             <span>未来任务</span>
           </label>
@@ -277,7 +282,7 @@
           </form>
         </div>
 
-        <button class="primary-action" type="button" :disabled="!draft.title" @click="createTask">
+        <button class="primary-action primary-block" type="button" :disabled="!draft.title" @click="createTask">
           添加任务
         </button>
       </section>
@@ -560,7 +565,7 @@ import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 20:17";
+const versionLabel = "v1.5.0 - 2026-11-03 20:18";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -761,7 +766,7 @@ const viewTitle = computed(() => {
   const titles = {
     home: "待办",
     categories: "",
-    add: "新任务",
+    add: "",
     history: "历史任务",
     "recurring-settings": "周期任务",
     "recurring-setting": "周期设置",
