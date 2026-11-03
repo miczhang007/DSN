@@ -14,7 +14,7 @@ const KEY_FONT = "note-font";
 const KEY_POSITION = "note-position";
 const DEFAULT_SIZE = "medium";
 const DEFAULT_THEME = "yellow";
-const DEFAULT_FONT = "maobi";
+const DEFAULT_FONT = "yingbi";
 const DEFAULT_POSITION = "top-right";
 
 export function useNoteSettings({ closeMenu, notify } = {}) {

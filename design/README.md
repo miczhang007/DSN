@@ -168,6 +168,7 @@
 
 | 日期 | 变更 | 影响文件 |
 | --- | --- | --- |
+| 2026-11-03 | 细节校准：去掉纸张外阴影、胶带改为宽幅半透明撕边双面胶、纸张加入纤维纹理、任务勾选框改圆角方块、新增细笔字体（柳建毛草）并默认硬笔行书 | `src/styles.css`、`src/components/AppMenu.vue`、`src/composables/useNoteSettings.js` |
 | 2026-11-03 | 02/03/05/06/07 稿落地：详情页胶囊操作与节点右对齐时间、新建页手写大输入与胶囊开关、周期规则行内编辑、分类当前标记与底部新增、设置面板色板/段控/字体选择；预览见 `design/preview/` | `src/App.vue`、`src/components/AppMenu.vue`、`src/styles.css` |
 | 2026-11-03 | 前端视觉按设计稿重写：内置三款手写体（毛笔楷书/行书/硬笔行书，OFL 许可并子集化）、纸张纹理与胶带重做、大字号手写标题与任务名、状态胶囊、分类卡片；主页任务行改为「标题 + 行内胶囊 + 虚线分隔」。字体文件位于 `src/assets/fonts/`，许可在 `third_party_licenses/` | `src/styles.css`、`src/App.vue`、`src/composables/useNoteSettings.js`、`src/components/AppMenu.vue` |
 | 2026-11-03 | P0 视觉层已落地：纸面颗粒 + 顶部胶带 + 楷体手写标题、任务行改虚线便签横线、暖色状态胶囊、实心主按钮、子页标题中文化（待办/新任务/历史任务/任务详情） | `src/styles.css`、`src/App.vue` |

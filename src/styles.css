@@ -16,6 +16,12 @@
 }
 
 @font-face {
+  font-family: "StickyHand Xibi";
+  src: url("./assets/fonts/StickyHandXibi.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
   font-family: "StickyHand Yingbi";
   src: url("./assets/fonts/StickyHandYingbi.woff2") format("woff2");
   font-display: swap;
@@ -80,7 +86,7 @@ button {
 
   width: 100vw;
   height: 100vh;
-  padding: 5px;
+  padding: 9px 7px 7px;
   background: transparent;
 }
 
@@ -94,6 +100,7 @@ button {
 .font-maobi   { --font-hand: "StickyHand Maobi", "KaiTi", "楷体", cursive; }
 .font-xingshu { --font-hand: "StickyHand Xingshu", "KaiTi", "楷体", cursive; }
 .font-yingbi  { --font-hand: "StickyHand Yingbi", "KaiTi", "楷体", cursive; }
+.font-xibi    { --font-hand: "StickyHand Xibi", "KaiTi", "楷体", cursive; }
 .font-kaishu  { --font-hand: "KaiTi", "楷体", "STKaiti", cursive; }
 
 .note {
@@ -101,18 +108,15 @@ button {
   width: 100%;
   height: 100%;
   padding: 0 26px;
-  overflow: hidden;
+  overflow: visible;
   background:
-    radial-gradient(120% 55% at 50% -8%, rgba(255, 255, 255, 0.4), transparent 62%),
-    radial-gradient(70% 45% at 100% 100%, rgba(120, 92, 32, 0.08), transparent 70%),
+    radial-gradient(130% 70% at 50% -12%, rgba(255, 255, 255, 0.42), transparent 62%),
+    radial-gradient(85% 62% at 102% 104%, rgba(120, 92, 32, 0.1), transparent 68%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(120, 92, 32, 0.03)),
     var(--paper);
   border: 1px solid rgba(126, 100, 44, 0.16);
   border-radius: 12px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.55) inset,
-    0 18px 28px -18px rgba(48, 37, 15, 0.42),
-    0 3px 8px -4px rgba(48, 37, 15, 0.2);
-  transform: rotate(-0.3deg);
+  box-shadow: none;
   cursor: default;
 }
 
@@ -124,11 +128,12 @@ button {
   pointer-events: none;
   content: "";
   background-image:
-    radial-gradient(rgba(120, 92, 32, 0.06) 0.6px, transparent 1px),
-    repeating-linear-gradient(90deg, rgba(120, 92, 32, 0.035) 0 1px, transparent 1px 4px);
-  background-size: 5px 5px, auto;
+    repeating-linear-gradient(90deg, rgba(126, 100, 44, 0.035) 0 1px, transparent 1px 3.2px),
+    repeating-linear-gradient(90deg, rgba(126, 100, 44, 0.02) 0 1px, transparent 1px 5.6px),
+    radial-gradient(rgba(120, 92, 32, 0.045) 0.5px, transparent 1px);
+  background-size: auto, auto, 4px 4px;
   mix-blend-mode: multiply;
-  opacity: 0.9;
+  opacity: 0.6;
 }
 
 .note > * {
@@ -139,20 +144,25 @@ button {
 /* 顶部胶带：复用 .pin-shadow 元素 */
 .pin-shadow {
   position: absolute;
-  top: -7px;
+  top: -6px;
   left: 50%;
-  width: 152px;
+  width: 150px;
   height: 34px;
-  margin-left: -76px;
+  margin-left: -75px;
   background:
-    linear-gradient(180deg, rgba(255, 253, 240, 0.72), rgba(240, 230, 198, 0.55)),
-    rgba(252, 246, 226, 0.4);
-  opacity: 0.86;
-  transform: rotate(-2.2deg);
-  box-shadow: 0 1px 2px rgba(90, 70, 26, 0.12), 0 3px 7px rgba(90, 70, 26, 0.08);
+    linear-gradient(180deg, rgba(255, 253, 244, 0.62), rgba(244, 236, 208, 0.5) 58%, rgba(232, 220, 184, 0.56)),
+    rgba(250, 243, 220, 0.4);
+  opacity: 0.9;
+  transform: rotate(-1.8deg);
+  box-shadow:
+    0 3px 8px rgba(80, 62, 24, 0.14),
+    inset 0 -5px 9px rgba(120, 98, 52, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
   clip-path: polygon(
-    0 9%, 5% 0, 13% 11%, 24% 2%, 36% 9%, 48% 1%, 61% 10%, 73% 2%, 85% 10%, 95% 3%, 100% 12%,
-    99% 90%, 92% 100%, 80% 90%, 68% 100%, 55% 91%, 42% 100%, 28% 90%, 15% 100%, 4% 91%, 0 98%
+    0 12%, 4% 5%, 9% 13%, 15% 5%, 22% 12%, 30% 4%, 38% 11%, 46% 4%, 54% 12%, 62% 4%,
+    70% 11%, 78% 4%, 86% 12%, 93% 5%, 100% 12%,
+    99% 87%, 94% 94%, 88% 86%, 81% 94%, 73% 87%, 65% 94%, 57% 86%, 49% 94%, 41% 87%,
+    33% 94%, 25% 86%, 17% 94%, 10% 87%, 4% 94%, 0 87%
   );
 }
 
@@ -377,7 +387,7 @@ h1 {
   line-height: 1;
   background: transparent;
   border: 1.8px solid rgba(126, 100, 44, 0.55);
-  border-radius: 50%;
+  border-radius: 7px;
   transition: background 130ms ease, border-color 130ms ease, transform 130ms ease;
 }
 
