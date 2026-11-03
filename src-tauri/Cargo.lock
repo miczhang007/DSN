@@ -554,7 +554,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-sticky-note"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "chrono",
  "rusqlite",
