@@ -364,14 +364,14 @@
             <span v-if="selectedTask.deadline_at" class="detail-field">截止：{{ formatDeadline(selectedTask.deadline_at) }}</span>
           </div>
           <div class="detail-actions-row">
-            <button v-if="taskStatus(selectedTask) === 'pending' || taskStatus(selectedTask) === 'in_progress'" class="text-button" type="button" @click="detailAction('suspend')">挂起</button>
-            <button v-if="taskStatus(selectedTask) === 'suspended'" class="text-button" type="button" @click="detailAction('activate')">激活</button>
-            <button v-if="taskStatus(selectedTask) === 'pending'" class="text-button" type="button" @click="detailAction('start')">进行中</button>
-            <button v-if="!selectedTask.completed_at" class="text-button" type="button" @click="detailCompleteEntry">已完成</button>
-            <button v-if="taskStatus(selectedTask) === 'completed'" class="text-button" type="button" @click="detailAction('undo_complete')">撤销完成</button>
-            <button class="text-button" type="button" @click="detailAction('archive')">归档</button>
-            <button class="text-button" type="button" @click="toggleDetailEdit">{{ detailEditOpen ? '收起编辑' : '任务编辑' }}</button>
-            <button class="text-button" type="button" @click="progressFormOpen = !progressFormOpen">{{ progressFormOpen ? '收起进度' : '添加进度' }}</button>
+            <button v-if="taskStatus(selectedTask) === 'pending' || taskStatus(selectedTask) === 'in_progress'" class="action-pill" data-icon="⏸" type="button" @click="detailAction('suspend')">挂起</button>
+            <button v-if="taskStatus(selectedTask) === 'suspended'" class="action-pill" data-icon="▶" type="button" @click="detailAction('activate')">激活</button>
+            <button v-if="taskStatus(selectedTask) === 'pending'" class="action-pill" data-icon="▶" type="button" @click="detailAction('start')">进行中</button>
+            <button v-if="!selectedTask.completed_at" class="action-pill" data-icon="✓" type="button" @click="detailCompleteEntry">已完成</button>
+            <button v-if="taskStatus(selectedTask) === 'completed'" class="action-pill" data-icon="↺" type="button" @click="detailAction('undo_complete')">撤销完成</button>
+            <button class="action-pill" data-icon="▣" type="button" @click="detailAction('archive')">归档</button>
+            <button class="action-pill" data-icon="✎" type="button" @click="toggleDetailEdit">{{ detailEditOpen ? '收起编辑' : '编辑' }}</button>
+            <button class="action-pill" data-icon="↗" type="button" @click="progressFormOpen = !progressFormOpen">{{ progressFormOpen ? '收起进度' : '进度' }}</button>
           </div>
           <div v-if="detailEditOpen" class="detail-actions">
             <label class="field compact">
@@ -443,11 +443,6 @@
                     @click.stop="handleMilestoneMainClick(milestone)"
                   >
                     <span class="milestone-title" :class="{ done: milestone.completed_at }">{{ milestone.title }}</span>
-                    <span class="milestone-meta">
-                      <span v-if="milestone.planned_at">计划 {{ formatDeadline(milestone.planned_at) }}</span>
-                      <span v-if="milestone.completed_at">已完成 {{ formatTime(milestone.completed_at) }}</span>
-                      <span v-else-if="isMilestoneOverdue(milestone.planned_at)" class="overdue-chip">已延迟</span>
-                    </span>
                     <div v-if="expandedMilestoneId === milestone.id" class="milestone-inline-actions">
                       <button v-if="milestone.completed_at" class="text-button" type="button" @click.stop="undoCompleteMilestone(milestone)">
                         撤销完成
@@ -460,12 +455,17 @@
                       </button>
                     </div>
                   </div>
+                  <span class="milestone-meta">
+                    <span v-if="milestone.completed_at">已完成 {{ formatTime(milestone.completed_at) }}</span>
+                    <span v-else-if="milestone.planned_at">计划 {{ formatDeadline(milestone.planned_at) }}</span>
+                    <span v-if="!milestone.completed_at && isMilestoneOverdue(milestone.planned_at)" class="overdue-chip">已延迟</span>
+                  </span>
                 </template>
               </div>
             </div>
             <button
               v-if="!milestoneFormOpen"
-              class="text-button"
+              class="text-button milestone-add"
               type="button"
               @click="openMilestoneForm"
             >
@@ -489,31 +489,23 @@
               </div>
             </form>
           </div>
-          <div v-if="progressFormOpen" class="detail-section progress-section">
-            <label class="field compact progress-field">
-              <span>进度记录</span>
-              <textarea
-                v-model.trim="progressDraft"
-                rows="2"
-                maxlength="240"
-                placeholder="记录当前进展、阻碍或下一步安排"
-              ></textarea>
-            </label>
-            <label class="field compact">
-              <span>记录时间</span>
-              <span class="date-time-inputs">
-                <input v-model="progressDate" type="date" />
-                <input v-model="progressTime" type="time" />
-              </span>
-            </label>
-            <button class="text-button progress-submit" type="button" :disabled="!progressDraft" @click="saveTaskProgress">添加进度</button>
+          <div v-if="progressFormOpen" class="progress-inline">
+            <input
+              v-model.trim="progressDraft"
+              type="text"
+              maxlength="240"
+              placeholder="记录当前进展…"
+              @keydown.enter.prevent="progressDraft && saveTaskProgress()"
+            />
+            <button class="text-button" type="button" :disabled="!progressDraft" @click="saveTaskProgress">添加进度</button>
           </div>
         </template>
         <div v-if="!detailEditOpen && !progressFormOpen" class="event-list">
           <h2>生命周期</h2>
           <div v-for="event in taskEvents" :key="event.id" class="event-row">
+            <span class="event-icon" aria-hidden="true">·</span>
+            <span class="event-text">{{ eventText(event) }}</span>
             <time>{{ formatTime(event.created_at) }}</time>
-            <span>{{ eventText(event) }}</span>
             <button
               v-if="event.event_type === 'progress_updated'"
               class="text-button danger event-delete"
@@ -568,7 +560,7 @@ import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 20:16";
+const versionLabel = "v1.5.0 - 2026-11-03 20:17";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -774,7 +766,7 @@ const viewTitle = computed(() => {
     "recurring-settings": "周期任务",
     "recurring-setting": "周期设置",
     "recurring-setting-detail": "规则详情",
-    detail: "任务详情",
+    detail: "",
     about: "",
   };
   return titles[view.value] || "";

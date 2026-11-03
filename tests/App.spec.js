@@ -469,13 +469,13 @@ describe("桌面便签核心交互", () => {
     await wrapper.find(".task-main").trigger("click");
     await wrapper.vm.$nextTick();
     expect(wrapper.find('.detail-actions input[maxlength="80"]').exists()).toBe(false);
-    expect(wrapper.find('textarea[placeholder*="记录当前进展"]').exists()).toBe(false);
-    await wrapper.findAll("button").find((button) => button.text() === "任务编辑").trigger("click");
+    expect(wrapper.find('input[placeholder*="记录当前进展"]').exists()).toBe(false);
+    await wrapper.findAll("button").find((button) => button.text() === "编辑").trigger("click");
     await wrapper.vm.$nextTick();
     expect(wrapper.find('.detail-actions input[maxlength="80"]').exists()).toBe(true);
-    await wrapper.findAll("button").find((button) => button.text() === "添加进度").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "进度").trigger("click");
     await wrapper.vm.$nextTick();
-    expect(wrapper.find('textarea[placeholder*="记录当前进展"]').exists()).toBe(true);
+    expect(wrapper.find('input[placeholder*="记录当前进展"]').exists()).toBe(true);
   });
 
   it("任务详情默认展示已添加节点，节点维护可直接进行", async () => {
@@ -515,7 +515,7 @@ describe("桌面便签核心交互", () => {
     await flushApp();
     await wrapper.find(".task-main").trigger("click");
     await wrapper.vm.$nextTick();
-    await wrapper.findAll("button").find((button) => button.text() === "任务编辑").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "编辑").trigger("click");
     await wrapper.vm.$nextTick();
     await wrapper.find('.detail-actions input[maxlength="80"]').setValue("整理资料（已更新）");
     await wrapper.findAll("button").find((button) => button.text() === "保存变更").trigger("click");
@@ -525,11 +525,11 @@ describe("桌面便签核心交互", () => {
     await wrapper.find('input[placeholder="节点名称"]').setValue("完成初稿");
     await wrapper.find("form.milestone-form").trigger("submit");
     expect(invokeMock).toHaveBeenCalledWith("add_milestone", expect.objectContaining({ title: "完成初稿" }));
-    // 点击添加进度展开后记录进度（默认带当前时间）
-    await wrapper.findAll("button").find((button) => button.text() === "添加进度").trigger("click");
+    // 点击进度展开后记录进度（默认带当前日期）
+    await wrapper.findAll("button").find((button) => button.text() === "进度").trigger("click");
     await wrapper.vm.$nextTick();
-    await wrapper.find('textarea[placeholder*="记录当前进展"]').setValue("已完成资料分类");
-    await wrapper.find(".progress-submit").trigger("click");
+    await wrapper.find('input[placeholder*="记录当前进展"]').setValue("已完成资料分类");
+    await wrapper.find(".progress-inline button").trigger("click");
     // 记录时间默认不指定（具体时间为空 → recordedAt 为仅日期）
     expect(invokeMock).toHaveBeenCalledWith("add_task_progress", expect.objectContaining({ progress: "已完成资料分类", recordedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }));
   });

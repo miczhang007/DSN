@@ -681,7 +681,7 @@ h1 {
   grid-template-columns: 18px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
-  padding: 10px 0;
+  padding: 9px 0;
   border-bottom: 1.4px dashed var(--line);
 }
 
@@ -749,7 +749,7 @@ h1 {
 .detail-view {
   display: grid;
   align-content: start;
-  gap: 14px;
+  gap: 12px;
 }
 
 .detail-summary {
@@ -780,7 +780,7 @@ h1 {
 .detail-actions-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .detail-actions-row .text-button {
@@ -1173,4 +1173,111 @@ h1 {
 
 .size-large .detail-summary strong {
   font-size: 25px;
+}
+
+/* --------------------------------------------------------------------------
+   详情页：胶囊操作、节点右侧时间、内联进度
+   -------------------------------------------------------------------------- */
+
+.action-pill {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 5px 10px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  background: rgba(255, 252, 228, 0.3);
+  border: 1.4px solid rgba(126, 100, 44, 0.34);
+  border-radius: 10px;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.action-pill::before {
+  content: attr(data-icon);
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.action-pill:hover {
+  background: rgba(255, 255, 255, 0.55);
+  transform: translateY(-1px);
+}
+
+.milestone-row {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+.milestone-row.editing {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.milestone-row.draft-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.milestone-meta {
+  justify-self: end;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.milestone-actions {
+  grid-column: 2 / -1;
+}
+
+.milestone-add {
+  justify-self: start;
+  margin-top: 8px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  border: 1.3px dashed rgba(126, 100, 44, 0.3);
+  border-radius: 999px;
+}
+
+.progress-inline {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(255, 252, 228, 0.26);
+  border: 1.4px solid rgba(126, 100, 44, 0.3);
+  border-radius: 10px;
+}
+
+.progress-inline input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.progress-inline .text-button {
+  flex: 0 0 auto;
+  padding: 2px 0 2px 14px;
+  border-left: 1.2px solid rgba(126, 100, 44, 0.24);
+  border-radius: 0;
+}
+
+.event-row {
+  gap: 8px;
+}
+
+.event-icon {
+  color: var(--ink-faint);
+  font-family: var(--font-ui);
+}
+
+.event-text {
+  flex: 1 1 auto;
+}
+
+.event-row time {
+  margin-left: auto;
+  text-align: right;
 }
