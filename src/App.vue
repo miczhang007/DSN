@@ -557,7 +557,7 @@ import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 import { productName } from "./lib/product-info.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.4.3 - 2026-11-03 16:32";
+const versionLabel = "v1.4.3 - 2026-11-03 16:41";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -756,14 +756,14 @@ let recurringRefreshTimer = null;
 
 const viewTitle = computed(() => {
   const titles = {
-    home: "Today",
+    home: "待办",
     categories: "",
-    add: "New",
-    history: "History",
+    add: "新任务",
+    history: "历史任务",
     "recurring-settings": "周期任务",
     "recurring-setting": "周期设置",
     "recurring-setting-detail": "规则详情",
-    detail: "Detail",
+    detail: "任务详情",
     about: "",
   };
   return titles[view.value] || "";

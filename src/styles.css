@@ -1373,3 +1373,426 @@ h1 {
   --note-field-bg: rgba(255, 255, 255, 0.36);
   --note-selected-bg: rgba(80, 73, 58, 0.12);
 }
+
+/* ==========================================================================
+   视觉层 P0：把界面收口成"一张真便签 + 手写清单"
+   只覆盖外观，不改交互逻辑；主题色仍走 --note-* 变量。
+   ========================================================================== */
+
+.app-shell {
+  --font-hand: "Segoe Print", "KaiTi", "楷体", "STKaiti", "Microsoft YaHei UI", cursive;
+  --font-ui: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+}
+
+.note {
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgba(255, 255, 255, 0.34), transparent 60%),
+    radial-gradient(80% 50% at 8% 100%, rgba(84, 62, 20, 0.05), transparent 70%),
+    linear-gradient(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 30%),
+    var(--note-paper);
+  border: 1px solid rgba(115, 88, 34, 0.12);
+  border-radius: 10px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 16px 26px -16px rgba(48, 37, 15, 0.34),
+    0 2px 5px rgba(48, 37, 15, 0.08);
+}
+
+/* 纸面细颗粒 + 极淡网格，贴近真实便签纸 */
+.note::before {
+  background-image:
+    radial-gradient(rgba(104, 80, 28, 0.055) 0.5px, transparent 0.9px),
+    linear-gradient(92deg, rgba(92, 70, 22, 0.03) 1px, transparent 1px),
+    linear-gradient(rgba(92, 70, 22, 0.02) 1px, transparent 1px);
+  background-size: 5px 5px, 26px 26px, 26px 26px;
+  opacity: 0.85;
+  mix-blend-mode: multiply;
+}
+
+/* 顶部胶带：复用 .pin-shadow 这个空元素，避免新增 DOM */
+.pin-shadow {
+  top: -2px;
+  right: auto;
+  left: 50%;
+  width: 96px;
+  height: 17px;
+  margin-left: -48px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 248, 0.5), rgba(244, 236, 206, 0.34)),
+    rgba(252, 246, 226, 0.28);
+  border-radius: 1px;
+  filter: blur(0.2px);
+  opacity: 0.72;
+  transform: rotate(-2.4deg);
+  box-shadow: 0 1px 2px rgba(80, 62, 24, 0.07);
+  clip-path: polygon(0 8%, 4% 0, 12% 9%, 22% 1%, 34% 7%, 48% 0, 62% 8%, 76% 1%, 88% 8%, 96% 2%, 100% 10%, 99% 92%, 94% 100%, 82% 92%, 70% 100%, 56% 93%, 44% 100%, 30% 92%, 18% 100%, 6% 93%, 0 99%);
+}
+
+h1 {
+  font-family: var(--font-hand);
+  font-size: 26px;
+  font-weight: 600;
+  color: rgba(56, 41, 18, 0.9);
+  letter-spacing: 0;
+}
+
+.quiet-view-title {
+  color: rgba(56, 41, 18, 0.86);
+}
+
+/* 子页标题：返回按钮与标题靠左成组，像便签页眉 */
+.is-subview .note-header {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.is-subview .note-header h1 {
+  font-size: 19px;
+}
+
+/* 列表：用便签横线代替行间空隙 */
+.task-list {
+  gap: 0;
+}
+
+.task-row {
+  grid-template-columns: 21px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 0 11px;
+  border-bottom: 1px dashed rgba(104, 80, 28, 0.18);
+}
+
+.task-row:last-child {
+  border-bottom: 0;
+}
+
+.complete-button {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  margin-top: 1px;
+  color: rgba(255, 249, 232, 0.95);
+  font-size: 12px;
+  line-height: 1;
+  background: transparent;
+  border: 1.6px solid rgba(88, 66, 24, 0.34);
+  border-radius: 50%;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.complete-button:hover {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(88, 66, 24, 0.56);
+  transform: scale(1.04);
+}
+
+.complete-button.done {
+  background: rgba(88, 66, 24, 0.52);
+  border-color: rgba(88, 66, 24, 0.52);
+}
+
+.complete-button.done::after {
+  content: "✓";
+}
+
+.task-title {
+  font-family: var(--font-hand);
+  font-size: 16px;
+  line-height: 1.35;
+  color: rgba(52, 39, 16, 0.92);
+}
+
+.task-title.done {
+  color: rgba(90, 74, 40, 0.55);
+}
+
+.task-meta {
+  gap: 7px;
+  margin-top: 3px;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  color: rgba(103, 84, 44, 0.78);
+}
+
+.urgent-chip,
+.overdue-chip,
+.status-chip {
+  padding: 1px 7px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+}
+
+.urgent-chip,
+.overdue-chip {
+  color: rgb(158, 58, 45);
+  background: rgba(178, 62, 48, 0.11);
+}
+
+.next-milestone,
+.start-time {
+  font-size: 11.5px;
+  color: rgba(103, 84, 44, 0.62);
+}
+
+.status-chip {
+  color: rgba(84, 66, 30, 0.78);
+  background: rgba(255, 252, 228, 0.5);
+  border: 1px solid rgba(104, 80, 28, 0.18);
+}
+
+/* 状态胶囊统一成暖色，不再用绿/蓝的网页色 */
+.status-chip.status-pending {
+  color: rgb(150, 104, 32);
+  background: rgba(214, 180, 110, 0.2);
+  border-color: rgba(150, 104, 32, 0.22);
+}
+
+.status-chip.status-in_progress {
+  color: rgb(139, 96, 26);
+  background: rgba(222, 188, 116, 0.28);
+  border-color: rgba(150, 104, 32, 0.26);
+}
+
+.status-chip.status-not_started {
+  color: rgba(84, 66, 30, 0.72);
+  background: rgba(255, 252, 228, 0.45);
+}
+
+.status-chip.status-suspended {
+  color: rgba(88, 86, 78, 0.8);
+  background: rgba(226, 222, 212, 0.4);
+}
+
+.status-chip.status-completed {
+  color: rgba(88, 104, 60, 0.85);
+  background: rgba(206, 222, 176, 0.3);
+}
+
+.status-chip.status-uncompleted {
+  color: rgb(150, 104, 32);
+  background: rgba(214, 180, 110, 0.18);
+}
+
+.status-chip.status-recurring {
+  color: rgba(122, 94, 30, 0.85);
+  background: rgba(240, 228, 186, 0.42);
+}
+
+.recurring-tag {
+  color: rgba(84, 66, 30, 0.8);
+  border-bottom: 1px dashed rgba(104, 80, 28, 0.4);
+}
+
+.in-progress-dot {
+  background: #3f7bd6;
+}
+
+/* 侧滑菜单 */
+.note-menu {
+  background: var(--note-menu-bg);
+  border: 1px solid rgba(104, 80, 28, 0.14);
+  border-radius: 12px;
+  box-shadow: -10px 0 28px rgba(48, 37, 15, 0.16);
+}
+
+.note-menu button {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/* 按钮：只留一个实心主操作 */
+.primary-action {
+  padding: 9px 14px;
+  color: rgb(255, 249, 232);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: linear-gradient(180deg, rgba(122, 94, 40, 0.96), rgba(95, 71, 26, 0.98));
+  border: 1px solid rgba(74, 55, 20, 0.6);
+  border-radius: 10px;
+  box-shadow: 0 6px 14px -8px rgba(58, 42, 12, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.primary-action:hover {
+  filter: brightness(1.04);
+  box-shadow: 0 8px 18px -8px rgba(58, 42, 12, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.primary-action:disabled {
+  filter: none;
+  opacity: 0.5;
+  transform: none;
+}
+
+.icon-button {
+  width: 26px;
+  height: 26px;
+  color: rgba(76, 58, 22, 0.66);
+  border-radius: 8px;
+}
+
+.icon-button:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.text-button {
+  padding: 5px 7px;
+  color: rgba(76, 58, 22, 0.74);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  border-radius: 7px;
+}
+
+.text-button:hover {
+  color: rgba(48, 36, 14, 0.92);
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.text-button.danger {
+  color: rgba(150, 56, 44, 0.86);
+}
+
+/* 表单：纸面上的浅色输入区 */
+.field input,
+.field select,
+.field textarea,
+.milestone-form input {
+  padding: 7px 9px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: rgba(48, 36, 14, 0.92);
+  background: rgba(255, 252, 228, 0.28);
+  border: 1px solid rgba(104, 80, 28, 0.16);
+  border-radius: 8px;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.milestone-form input:focus {
+  border-color: rgba(104, 80, 28, 0.34);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(104, 80, 28, 0.08);
+}
+
+.field > span:first-child {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: rgba(103, 84, 44, 0.7);
+}
+
+/* 详情 / 历史 / 节点 */
+.detail-summary strong {
+  font-family: var(--font-hand);
+  font-size: 20px;
+  line-height: 1.3;
+  color: rgba(52, 39, 16, 0.94);
+}
+
+.detail-field {
+  color: rgba(103, 84, 44, 0.66);
+  font-size: 12px;
+}
+
+.detail-section h2 {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(103, 84, 44, 0.62);
+}
+
+.event-row {
+  border-bottom: 1px dashed rgba(104, 80, 28, 0.14);
+}
+
+.event-row time {
+  color: rgba(103, 84, 44, 0.56);
+}
+
+.milestone-row {
+  border-bottom: 1px dashed rgba(104, 80, 28, 0.14);
+}
+
+.milestone-check {
+  display: grid;
+  place-items: center;
+  color: rgba(255, 249, 232, 0.95);
+  font-size: 10px;
+  border: 1.5px solid rgba(88, 66, 24, 0.36);
+  background: transparent;
+}
+
+.milestone-check.done {
+  border-color: rgba(88, 66, 24, 0.5);
+  background: rgba(88, 66, 24, 0.5);
+}
+
+.milestone-check.done::after {
+  content: "✓";
+}
+
+.milestone-title {
+  font-family: var(--font-hand);
+  font-size: 15px;
+  color: rgba(52, 39, 16, 0.9);
+}
+
+.history-item {
+  border-bottom: 1px dashed rgba(104, 80, 28, 0.16);
+}
+
+.history-main span {
+  font-family: var(--font-hand);
+  font-size: 15px;
+  color: rgba(52, 39, 16, 0.9);
+}
+
+.history-main small {
+  font-size: 11.5px;
+  color: rgba(103, 84, 44, 0.6);
+}
+
+.empty-state p {
+  font-family: var(--font-hand);
+  font-size: 15px;
+  color: rgba(103, 84, 44, 0.66);
+}
+
+.note-footer {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: rgba(103, 84, 44, 0.5);
+}
+
+.brand-mark {
+  letter-spacing: 0.04em;
+  color: rgba(103, 84, 44, 0.34);
+}
+
+/* 分类标签：手写体 + 更像纸片 */
+.category-tab {
+  font-family: var(--font-hand);
+  font-size: 13px;
+  color: rgba(94, 75, 33, 0.62);
+}
+
+.category-tab.active {
+  color: rgba(46, 34, 12, 0.95);
+}
+
+.size-small .task-title {
+  font-size: 15px;
+}
+
+.size-small h1 {
+  font-size: 22px;
+}
