@@ -2,8 +2,18 @@
   <section class="content about-view" @click.stop>
     <div class="about-hero">
       <h2 class="about-name">{{ productFullName }}</h2>
-      <span class="about-version">{{ versionLabel }}</span>
+      <div class="about-meta-line">
+        <span class="about-version">{{ versionText }}</span>
+        <span v-if="updatedAt" class="about-updated">更新于 {{ updatedAt }}</span>
+      </div>
     </div>
+
+    <section class="about-release">
+      <h3 class="about-release-title">本版更新</h3>
+      <ul class="about-release-list">
+        <li v-for="note in releaseNotes" :key="note">{{ note }}</li>
+      </ul>
+    </section>
 
     <dl class="about-list">
       <div>
@@ -38,12 +48,18 @@
 
 <script setup>
 // 产品简介页：静态信息来自 product-info，版本号由 App.vue 传入
-// （AGENTS.md 要求 versionLabel 在 App.vue 中维护）。
-import { privacyPolicyUrl, productFullName, repositoryUrl } from "../lib/product-info.js";
+// （AGENTS.md 要求 versionLabel 在 App.vue 中维护，格式固定为 `vX.Y.Z - YYYY-MM-DD HH:mm`）。
+import { computed } from "vue";
+import { privacyPolicyUrl, productFullName, releaseNotes, repositoryUrl } from "../lib/product-info.js";
 
-defineProps({
+const props = defineProps({
   versionLabel: { type: String, default: "" },
 });
 
 defineEmits(["open-external"]);
+
+// 把 `v1.5.0 - 2026-11-04 10:01` 拆成版本号与更新时间，分别展示。
+const releaseMatch = computed(() => /^(v[\d.]+)\s*-\s*(.+)$/.exec(props.versionLabel || ""));
+const versionText = computed(() => releaseMatch.value?.[1] ?? props.versionLabel);
+const updatedAt = computed(() => releaseMatch.value?.[2] ?? "");
 </script>

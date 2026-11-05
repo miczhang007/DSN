@@ -20,10 +20,9 @@
               type="date"
               @input="$emit('change-completed-date', $event.target.value)"
             />
-            <input
-              :value="confirmation.state.completedTime"
-              type="time"
-              @input="$emit('change-completed-time', $event.target.value)"
+            <TimeInput
+              :model-value="confirmation.state.completedTime"
+              @update:model-value="$emit('change-completed-time', $event)"
             />
           </span>
         </label>
@@ -53,6 +52,8 @@
 <script setup>
 // 通用确认弹窗：普通确认、归档勾选、完成时间选择、多选项确认（撤销完成等）。
 // 弹窗自身不修改父级状态，所有写操作通过事件回传。
+import TimeInput from "./TimeInput.vue";
+
 defineProps({
   confirmation: {
     type: Object,

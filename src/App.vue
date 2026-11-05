@@ -56,6 +56,7 @@
         @categories="openCategoryManager"
         @about="openAbout"
         @exit="exitApp"
+        @close="closeMenu"
         @change-size="changeNoteSize"
         @change-theme="changeNoteTheme"
         @change-font="changeNoteFont"
@@ -141,13 +142,14 @@
               @click.stop="handleTaskMainClick(task)"
             >
               <span class="task-title-line">
-                <span v-if="taskStatus(task) === 'in_progress'" class="in-progress-dot" aria-hidden="true"></span>
-                <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">{{ task.title }}</span>
+                <span class="task-title" :class="{ done: taskStatus(task) === 'completed' }">
+                  <span class="task-title-text"><span v-if="taskStatus(task) === 'in_progress'" class="in-progress-dot" aria-hidden="true"></span>{{ task.title }}</span>
+                </span>
                 <span v-if="task.is_urgent" class="urgent-chip">紧急</span>
                 <span v-if="task.is_recurring" class="status-chip status-recurring">周期任务</span>
               </span>
               <span
-                v-if="task.next_milestone_title || task.next_milestone_planned_at || task.start_at"
+                v-if="(task.next_milestone_title || task.next_milestone_planned_at || task.start_at) && taskStatus(task) !== 'suspended'"
                 class="task-meta"
               >
                 <span v-if="task.next_milestone_title || task.next_milestone_planned_at" class="next-milestone">
@@ -235,6 +237,9 @@
           autofocus
         />
         <div class="task-type-toggles">
+          <select v-model="draft.category" class="category-select" aria-label="所属分类">
+            <option v-for="category in categories" :key="category" :value="category">{{ category }}</option>
+          </select>
           <label class="toggle-pill recurring-toggle">
             <input v-model="draft.isRecurring" type="checkbox" />
             <span>周期任务</span>
@@ -253,7 +258,7 @@
             <span>任务开始执行时间</span>
             <span class="date-time-inputs">
               <input v-model="draft.startAt" type="date" />
-              <input v-model="draft.startAtTime" type="time" />
+              <TimeInput v-model="draft.startAtTime" />
             </span>
           </label>
         </template>
@@ -264,7 +269,7 @@
           <label class="field compact"><span>重复频率</span><select v-model="draft.frequencyType"><option value="daily">按日</option><option value="weekly">按周</option><option value="monthly">按月</option></select></label>
           <div v-if="draft.frequencyType === 'daily'" class="weekday-picker"><label v-for="day in weekdayOptions" :key="day.value"><input v-model="draft.weekdays" type="checkbox" :value="day.value" />{{ day.label }}</label></div>
           <label v-if="draft.frequencyType !== 'daily'" class="field compact"><span>重复次数</span><input v-model.number="draft.repeatCount" type="number" min="1" max="31" /></label>
-          <label class="field compact"><span>任务生成时间</span><input v-model="draft.generateTime" type="time" /></label>
+          <label class="field compact"><span>任务生成时间</span><span class="date-time-inputs"><TimeInput v-model="draft.generateTime" /></span></label>
         </template>
 
         <div v-if="!draft.isRecurring" class="milestone-editor">
@@ -297,9 +302,8 @@
                 type="date"
                 placeholder="计划日期"
               />
-              <input
+              <TimeInput
                 v-model="draft.milestoneDraftPlannedAtTime"
-                type="time"
               />
             </span>
             <div class="milestone-form-actions">
@@ -373,7 +377,7 @@
         <label class="field compact"><span>重复频率</span><select v-model="recurringDraft.frequencyType"><option value="daily">按日</option><option value="weekly">按周</option><option value="monthly">按月</option></select></label>
         <div v-if="recurringDraft.frequencyType === 'daily'" class="weekday-picker"><label v-for="day in weekdayOptions" :key="day.value"><input v-model="recurringDraft.weekdays" type="checkbox" :value="day.value" />{{ day.label }}</label></div>
         <label v-if="recurringDraft.frequencyType !== 'daily'" class="field compact"><span>重复次数</span><input v-model.number="recurringDraft.repeatCount" type="number" min="1" max="31" /></label>
-        <label class="field compact"><span>任务生成时间</span><input v-model="recurringDraft.generateTime" type="time" /></label>
+        <label class="field compact"><span>任务生成时间</span><span class="date-time-inputs"><TimeInput v-model="recurringDraft.generateTime" /></span></label>
         <button class="primary-action" type="button" :disabled="!recurringDraft.title" @click="saveRecurringSetting">保存设置</button>
       </section>
 
@@ -387,7 +391,7 @@
       <section v-else-if="view === 'detail' && selectedTask" class="content detail-view" @click.stop>
         <div v-if="selectedTask.archived_at" class="detail-summary">
           <strong>{{ selectedTask.title }}</strong>
-          <span class="status-chip" :class="`status-${taskStatus(selectedTask)}`">{{ taskStatusText(selectedTask) }}</span>
+          <span class="status-chip" :class="`status-${taskStatus(selectedTask)}`"><span v-if="taskStatus(selectedTask) === 'in_progress'" class="in-progress-dot chip-dot" aria-hidden="true"></span>{{ taskStatusText(selectedTask) }}</span>
           <span v-if="selectedTask.deadline_at">截止：{{ formatDeadline(selectedTask.deadline_at) }}</span>
           <span v-if="selectedTask.is_urgent">紧急</span>
           <button v-if="selectedTask.is_recurring" class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期规则</button>
@@ -396,7 +400,7 @@
           <div class="detail-summary">
             <strong>{{ selectedTask.title }}</strong>
             <div class="detail-meta-row">
-              <span class="status-chip" :class="`status-${taskStatus(selectedTask)}`">{{ taskStatusText(selectedTask) }}</span>
+              <span class="status-chip" :class="`status-${taskStatus(selectedTask)}`"><span v-if="taskStatus(selectedTask) === 'in_progress'" class="in-progress-dot chip-dot" aria-hidden="true"></span>{{ taskStatusText(selectedTask) }}</span>
               <span v-if="selectedTask.is_urgent" class="urgent-chip">紧急</span>
               <button v-if="selectedTask.is_recurring" class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期规则</button>
             </div>
@@ -411,37 +415,88 @@
             <button v-if="taskStatus(selectedTask) === 'completed'" class="action-pill" data-icon="↺" type="button" @click="detailAction('undo_complete')">撤销完成</button>
             <button class="action-pill" data-icon="▣" type="button" @click="detailAction('archive')">归档</button>
             <button class="action-pill" data-icon="✎" type="button" @click="toggleDetailEdit">{{ detailEditOpen ? '收起编辑' : '编辑' }}</button>
-            <button class="action-pill" data-icon="↗" type="button" @click="progressFormOpen = !progressFormOpen">{{ progressFormOpen ? '收起进度' : '进度' }}</button>
+            <button class="action-pill" data-icon="↗" type="button" @click="toggleProgressForm">{{ progressFormOpen ? '收起进度' : '进度' }}</button>
+            <button
+              v-if="!selectedTask.is_recurring"
+              class="action-pill"
+              data-icon="＋"
+              type="button"
+              @click="toggleMilestoneForm"
+            >
+              {{ milestoneFormOpen ? '收起节点' : '添加节点' }}
+            </button>
           </div>
-          <div v-if="detailEditOpen" class="detail-actions">
-            <label class="field compact">
-              <span>任务内容</span>
-              <input v-model.trim="editDraft.title" type="text" maxlength="80" />
+          <div v-if="progressFormOpen" class="progress-inline">
+            <textarea
+              v-model.trim="progressDraft"
+              class="progress-input"
+              rows="2"
+              maxlength="240"
+              placeholder="记录当前进展…"
+              @keydown.enter.prevent="progressDraft && saveTaskProgress()"
+            ></textarea>
+            <label class="field compact progress-time-field">
+              <span>完成时间</span>
+              <span class="date-time-inputs">
+                <input v-model="progressDate" type="date" />
+                <TimeInput v-model="progressTime" />
+              </span>
             </label>
-            <div v-if="!selectedTask.is_recurring" class="edit-toggles">
-              <label class="check-field">
-                <input v-model="editDraft.isUrgent" type="checkbox" />
-                <span>紧急</span>
-              </label>
-              <label class="check-field">
-                <input v-model="editDraft.isFuture" type="checkbox" @change="toggleEditFutureTask" />
-                <span>未来任务</span>
-              </label>
+            <div class="progress-form-actions">
+              <button class="text-button" type="button" :disabled="!progressDraft" @click="saveTaskProgress">添加</button>
+              <button class="text-button" type="button" @click="toggleProgressForm">收起</button>
+            </div>
+          </div>
+          <div v-if="milestoneFormOpen" class="milestone-inline">
+            <form class="milestone-form" @submit.prevent="addMilestone">
+              <input v-model.trim="milestoneDraft.title" type="text" maxlength="40" placeholder="节点名称" />
+              <span class="date-time-inputs">
+                <input v-model="milestoneDraft.plannedAt" type="date" />
+                <TimeInput v-model="milestoneDraft.plannedAtTime" />
+              </span>
+              <div class="milestone-form-actions">
+                <button class="text-button" type="submit" :disabled="!milestoneDraft.title">添加</button>
+                <button class="text-button" type="button" @click="closeMilestoneForm">收起</button>
+              </div>
+            </form>
+          </div>
+          <div v-if="detailEditOpen" class="detail-actions detail-edit-panel">
+            <input
+              v-model.trim="editDraft.title"
+              class="task-input"
+              type="text"
+              maxlength="80"
+              placeholder="写点什么…"
+            />
+            <div class="task-type-toggles">
+              <select v-model="editDraft.category" class="category-select" aria-label="所属分类">
+                <option v-for="category in categories" :key="category" :value="category">{{ category }}</option>
+              </select>
+              <template v-if="!selectedTask.is_recurring">
+                <label class="toggle-pill">
+                  <input v-model="editDraft.isUrgent" type="checkbox" />
+                  <span>紧急</span>
+                </label>
+                <label class="toggle-pill">
+                  <input v-model="editDraft.isFuture" type="checkbox" @change="toggleEditFutureTask" />
+                  <span>未来任务</span>
+                </label>
+              </template>
             </div>
             <label v-if="editDraft.isFuture && !selectedTask.is_recurring" class="field compact">
               <span>任务开始执行时间</span>
               <span class="date-time-inputs">
                 <input v-model="editDraft.startAt" type="date" />
-                <input v-model="editDraft.startAtTime" type="time" />
+                <TimeInput v-model="editDraft.startAtTime" />
               </span>
             </label>
-            <div class="detail-action-row">
-              <button class="text-button" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">保存变更</button>
-            </div>
+            <button class="primary-action primary-block" type="button" :disabled="!editDraft.title" @click="saveTaskChanges">
+              保存变更
+            </button>
           </div>
-          <div v-if="!selectedTask.is_recurring && !detailEditOpen && !progressFormOpen" class="detail-section milestone-section">
+          <div v-if="!selectedTask.is_recurring && !detailEditOpen && milestones.length" class="detail-section milestone-section">
             <h2>节点</h2>
-            <div v-if="milestones.length" ref="milestoneListEl" class="milestone-list">
+            <div ref="milestoneListEl" class="milestone-list">
               <div
                 v-for="(milestone, index) in milestones"
                 :key="milestone.id"
@@ -464,7 +519,7 @@
                     <input v-model.trim="milestoneEditDraft.title" type="text" maxlength="40" placeholder="节点名称" />
                     <span class="date-time-inputs">
                       <input v-model="milestoneEditDraft.plannedAt" type="date" />
-                      <input v-model="milestoneEditDraft.plannedAtTime" type="time" />
+                      <TimeInput v-model="milestoneEditDraft.plannedAtTime" />
                     </span>
                   </div>
                   <div class="milestone-actions">
@@ -482,8 +537,20 @@
                     @mousedown.prevent="startMilestoneDrag($event, index)"
                     @click.stop="handleMilestoneMainClick(milestone)"
                   >
-                    <span class="milestone-title" :class="{ done: milestone.completed_at }">{{ milestone.title }}</span>
+                    <div class="milestone-title-row">
+                      <span class="milestone-title" :class="{ done: milestone.completed_at }">{{ milestone.title }}</span>
+                      <span v-if="!milestone.completed_at && milestone.started_at" class="status-chip milestone-chip">
+                        <span class="in-progress-dot chip-dot" aria-hidden="true"></span>进行中
+                      </span>
+                      <span v-if="!milestone.completed_at && isMilestoneOverdue(milestone.planned_at)" class="overdue-chip milestone-chip">已延迟</span>
+                    </div>
                     <div v-if="expandedMilestoneId === milestone.id" class="milestone-inline-actions">
+                      <button v-if="!milestone.completed_at && !milestone.started_at" class="text-button" type="button" @click.stop="startMilestone(milestone)">
+                        进行中
+                      </button>
+                      <button v-if="!milestone.completed_at && milestone.started_at" class="text-button" type="button" @click.stop="undoStartMilestone(milestone)">
+                        撤销进行
+                      </button>
                       <button v-if="milestone.completed_at" class="text-button" type="button" @click.stop="undoCompleteMilestone(milestone)">
                         撤销完成
                       </button>
@@ -498,64 +565,46 @@
                   <span class="milestone-meta">
                     <span v-if="milestone.completed_at">已完成 {{ formatTime(milestone.completed_at) }}</span>
                     <span v-else-if="milestone.planned_at">计划 {{ formatDeadline(milestone.planned_at) }}</span>
-                    <span v-if="!milestone.completed_at && isMilestoneOverdue(milestone.planned_at)" class="overdue-chip">已延迟</span>
                   </span>
                 </template>
               </div>
             </div>
-            <button
-              v-if="!milestoneFormOpen"
-              class="text-button milestone-add"
-              type="button"
-              @click="openMilestoneForm"
-            >
-              添加节点
-            </button>
-            <form v-if="milestoneFormOpen" class="milestone-form" @submit.prevent="addMilestone">
-              <input v-model.trim="milestoneDraft.title" type="text" maxlength="40" placeholder="节点名称" />
-              <span class="date-time-inputs">
-                <input
-                  v-model="milestoneDraft.plannedAt"
-                  type="date"
-                />
-                <input
-                  v-model="milestoneDraft.plannedAtTime"
-                  type="time"
-                />
-              </span>
-              <div class="milestone-form-actions">
-                <button class="text-button" type="submit" :disabled="!milestoneDraft.title">添加</button>
-                <button class="text-button" type="button" @click="closeMilestoneForm">收起</button>
-              </div>
-            </form>
-          </div>
-          <div v-if="progressFormOpen" class="progress-inline">
-            <input
-              v-model.trim="progressDraft"
-              type="text"
-              maxlength="240"
-              placeholder="记录当前进展…"
-              @keydown.enter.prevent="progressDraft && saveTaskProgress()"
-            />
-            <button class="text-button" type="button" :disabled="!progressDraft" @click="saveTaskProgress">添加进度</button>
           </div>
         </template>
-        <div v-if="!detailEditOpen && !progressFormOpen" class="event-list">
+        <div v-if="!detailEditOpen" class="event-list">
           <h2>生命周期</h2>
-          <div v-for="event in taskEvents" :key="event.id" class="event-row">
-            <span class="event-icon" aria-hidden="true">·</span>
+          <div
+            v-for="event in visibleTaskEvents"
+            :key="event.id"
+            class="event-row"
+            :class="{ expanded: expandedEventId === event.id }"
+            role="button"
+            tabindex="0"
+            @click.stop="toggleEventActions(event)"
+            @keydown.enter.prevent="toggleEventActions(event)"
+          >
+            <EventIcon :type="event.event_type" />
             <span class="event-text">{{ eventText(event) }}</span>
             <time>{{ formatTime(event.created_at) }}</time>
             <button
-              v-if="event.event_type === 'progress_updated'"
+              v-if="expandedEventId === event.id"
               class="text-button danger event-delete"
               type="button"
-              @click="deleteTaskProgress(event)"
+              @click.stop="deleteTaskEvent(event)"
             >
               删除
             </button>
           </div>
+          <button
+            v-if="fullLogOpen || hiddenEventCount"
+            class="text-button event-more"
+            type="button"
+            @click="fullLogOpen = !fullLogOpen"
+          >
+            {{ fullLogOpen ? '收起日志' : `完整日志（+${hiddenEventCount}）` }}
+          </button>
         </div>
+        <p v-if="!detailEditOpen" class="detail-hint">点击节点和日志内容可展开操作，按住节点可拖动排序</p>
       </section>
 
       <AboutView v-else-if="view === 'about'" :version-label="versionLabel" @open-external="openExternal" />
@@ -586,6 +635,8 @@ import AboutView from "./components/AboutView.vue";
 import AppMenu from "./components/AppMenu.vue";
 import AppNotice from "./components/AppNotice.vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
+import EventIcon from "./components/EventIcon.vue";
+import TimeInput from "./components/TimeInput.vue";
 import { useHistory } from "./composables/useHistory.js";
 import { useNoteSettings } from "./composables/useNoteSettings.js";
 import { useNotice } from "./composables/useNotice.js";
@@ -599,7 +650,7 @@ import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-03 23:40";
+const versionLabel = "v1.5.0 - 2026-11-05 18:37";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -669,6 +720,7 @@ const {
   progressTime,
   detailEditOpen,
   progressFormOpen,
+  fullLogOpen,
   detailReturnView,
   milestoneListEl,
   milestoneDragging,
@@ -690,15 +742,21 @@ const {
   reloadTaskDetail,
   openMilestoneForm,
   closeMilestoneForm,
+  toggleMilestoneForm,
+  toggleProgressForm,
   addMilestone,
   startMilestoneEdit,
   cancelMilestoneEdit,
   saveMilestoneEdit,
   undoCompleteMilestone,
+  startMilestone,
+  undoStartMilestone,
   deleteMilestone,
   isMilestoneOverdue,
   saveTaskProgress,
-  deleteTaskProgress,
+  expandedEventId,
+  toggleEventActions,
+  deleteTaskEvent,
 } = useTaskDetail({
   currentCategory,
   view,
@@ -735,10 +793,11 @@ const {
   refreshActiveTasks,
 });
 
-const { draft, createTask, addDraftMilestone, removeDraftMilestone, toggleFutureTask } = useTaskCreation({
+const { draft, createTask, syncDraftCategory, addDraftMilestone, removeDraftMilestone, toggleFutureTask } = useTaskCreation({
   currentCategory,
   view,
   refreshActiveTasks,
+  switchCategory,
 });
 
 const {
@@ -824,6 +883,29 @@ const shouldExitFromCategoryManager = computed(() =>
 const backButtonLabel = computed(() =>
   shouldExitFromCategoryManager.value ? "退出" : "返回",
 );
+
+// 生命周期默认只展开：任务创建、所有进度记录、以及“仍然有效”的最后一次完成。
+// 已撤销的完成、挂起/激活/归档、字段修改与节点类日志都折叠在“完整日志（+N）”里。
+const CORE_LIFECYCLE_EVENT_TYPES = new Set(["created", "progress_updated"]);
+
+// 逐条遍历（已按时间升序）：完成后再撤销会作废上一个完成记录，最终剩下的才是当前有效的完成。
+const effectiveCompletionEventId = computed(() => {
+  let pending = null;
+  for (const event of taskEvents.value) {
+    if (event.event_type === "completed") pending = event.id;
+    else if (event.event_type === "completion_undone") pending = null;
+  }
+  return pending;
+});
+
+const visibleTaskEvents = computed(() => {
+  if (fullLogOpen.value) return taskEvents.value;
+  const completionId = effectiveCompletionEventId.value;
+  return taskEvents.value.filter(
+    (event) => CORE_LIFECYCLE_EVENT_TYPES.has(event.event_type) || event.id === completionId,
+  );
+});
+const hiddenEventCount = computed(() => taskEvents.value.length - visibleTaskEvents.value.length);
 
 let tabsResizeObserver = null;
 
@@ -977,6 +1059,8 @@ function openAdd() {
   }
   menuOpen.value = false;
   expandedHistoryTaskId.value = "";
+  // 新建页默认归属当前分类，可在表单里改到其他分类。
+  syncDraftCategory();
   view.value = "add";
 }
 

@@ -11,10 +11,13 @@ import { dateTimeToIso, defaultStartTime, localDateInputValue } from "../lib/dat
  * @param {import("vue").Ref<string>} deps.currentCategory
  * @param {import("vue").Ref<string>} deps.view
  * @param {Function} deps.refreshActiveTasks
+ * @param {Function} deps.switchCategory     新建到其他分类后切过去
  */
-export function useTaskCreation({ currentCategory, view, refreshActiveTasks }) {
+export function useTaskCreation({ currentCategory, view, refreshActiveTasks, switchCategory }) {
   const draft = reactive({
     title: "",
+    // 所属分类：默认当前分类，可在新建表单里改到别的分类。
+    category: "",
     isUrgent: false,
     isRecurring: false,
     isFuture: false,
@@ -34,11 +37,17 @@ export function useTaskCreation({ currentCategory, view, refreshActiveTasks }) {
     milestoneFormOpen: false,
   });
 
+  /** 打开新建页时把所属分类重置为当前分类。 */
+  function syncDraftCategory() {
+    draft.category = currentCategory.value;
+  }
+
   async function createTask() {
     if (!draft.title) return;
+    const owner = draft.category || currentCategory.value;
     if (draft.isRecurring) {
       await invoke("create_recurring_task_setting", {
-        owner: currentCategory.value,
+        owner,
         title: draft.title,
         isUrgent: false,
         dateRangeType: draft.dateRangeType,
@@ -61,6 +70,11 @@ export function useTaskCreation({ currentCategory, view, refreshActiveTasks }) {
       draft.frequencyType = "daily";
       draft.weekdays = [];
       draft.generateTime = "06:00";
+      draft.category = currentCategory.value;
+      if (owner && owner !== currentCategory.value && switchCategory) {
+        await switchCategory(owner);
+        return;
+      }
       view.value = "home";
       await refreshActiveTasks();
       return;
@@ -70,7 +84,7 @@ export function useTaskCreation({ currentCategory, view, refreshActiveTasks }) {
       plannedAt: dateTimeToIso(ms.plannedAt, ms.plannedAtTime),
     }));
     await invoke("create_task", {
-      owner: currentCategory.value,
+      owner,
       title: draft.title,
       deadlineAt: null,
       isUrgent: draft.isUrgent,
@@ -87,6 +101,12 @@ export function useTaskCreation({ currentCategory, view, refreshActiveTasks }) {
     draft.milestoneDraftTitle = "";
     draft.milestoneDraftPlannedAt = "";
     draft.milestoneDraftPlannedAtTime = "";
+    draft.category = currentCategory.value;
+    // 建到别的分类时直接切过去，避免“创建成功但当前列表里看不到”。
+    if (owner && owner !== currentCategory.value && switchCategory) {
+      await switchCategory(owner);
+      return;
+    }
     view.value = "home";
     await refreshActiveTasks();
   }
@@ -113,5 +133,5 @@ export function useTaskCreation({ currentCategory, view, refreshActiveTasks }) {
     }
   }
 
-  return { draft, createTask, addDraftMilestone, removeDraftMilestone, toggleFutureTask };
+  return { draft, createTask, syncDraftCategory, addDraftMilestone, removeDraftMilestone, toggleFutureTask };
 }

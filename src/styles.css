@@ -467,15 +467,16 @@ h1 {
 }
 
 .task-title {
-  display: inline-flex;
-  gap: 7px;
-  align-items: center;
+  display: block;
   min-width: 0;
   font-family: var(--font-hand);
   font-weight: var(--hand-weight, 600);
   font-size: 21px;
   line-height: 1.34;
   color: var(--ink);
+}
+
+.task-title-text {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -486,9 +487,12 @@ h1 {
 }
 
 .in-progress-dot {
-  flex: 0 0 auto;
+  display: inline-block;
   width: 8px;
   height: 8px;
+  margin-right: 7px;
+  /* 圆点跟随第一行：vertical-align 用 em 微调，使圆心落在第一行字面中心（middle 会偏低约 3px） */
+  vertical-align: 0.2em;
   background: #3f7bd6;
   border-radius: 50%;
 }
@@ -540,6 +544,14 @@ h1 {
 .status-chip.status-suspended {
   color: rgba(98, 94, 84, 0.9);
   background: rgba(226, 222, 212, 0.6);
+}
+
+/* 详情页状态胶囊内的进行中圆点：与首页列表标记同色，由胶囊的 align-items 垂直居中 */
+.status-chip .in-progress-dot {
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  vertical-align: baseline;
 }
 
 .next-milestone,
@@ -671,19 +683,78 @@ h1 {
   min-width: 0;
 }
 
-.check-field {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
+.date-time-inputs .time-input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 时间输入：有值时用“清除”按钮替换原生钟表图标，清除后钟表图标恢复 */
+.time-input {
+  position: relative;
+  display: flex;
+}
+
+.time-input input {
+  width: 100%;
+  min-width: 0;
+}
+
+.time-input.has-value input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.time-input .time-clear {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
   color: var(--ink-soft);
   font-family: var(--font-ui);
   font-size: 13px;
+  line-height: 1;
+  border-radius: 50%;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.time-input .time-clear:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* “添加节点 / 添加进度”面板底部的操作行：添加 / 收起 */
+.milestone-form-actions,
+.progress-form-actions {
+  display: flex;
+  gap: 4px;
 }
 
 .task-type-toggles {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 10px;
+}
+
+/* 所属分类：与属性开关同一行的紧凑胶囊选择器，减少表单纵向占用 */
+.category-select {
+  padding: 4px 9px;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1.3px dashed rgba(126, 100, 44, 0.32);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.category-select:focus {
+  border-color: rgba(126, 100, 44, 0.5);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(126, 100, 44, 0.1);
 }
 
 .weekday-picker {
@@ -804,6 +875,38 @@ h1 {
   grid-column: 2;
 }
 
+.milestone-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+/* 节点状态标签（进行中 / 已延迟）：比任务标签更小，紧跟节点标题 */
+.milestone-chip {
+  padding: 1px 7px;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.milestone-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  margin-top: 2px;
+}
+
+/* “添加节点”折叠面板：与进度面板同一视觉样式，纵向排布名称与计划时间 */
+.milestone-inline {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 252, 228, 0.26);
+  border: 1.4px solid rgba(126, 100, 44, 0.3);
+  border-radius: 10px;
+}
+
 /* --------------------------------------------------------------------------
    详情
    -------------------------------------------------------------------------- */
@@ -853,6 +956,12 @@ h1 {
   border-radius: 999px;
 }
 
+/* 详情页任务编辑：与“新建任务”页同一套内容样式（大号手写输入 + 胶囊开关 + 主按钮） */
+.detail-edit-panel {
+  display: grid;
+  gap: 10px;
+}
+
 .detail-section h2,
 .event-list h2 {
   margin: 0 0 6px;
@@ -863,6 +972,15 @@ h1 {
   letter-spacing: 0.1em;
 }
 
+/* 详情页底部操作提示：节点与日志均可点击展开，节点支持拖动排序 */
+.detail-hint {
+  margin: 12px 0 0;
+  color: var(--ink-faint);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+
 .event-list {
   display: grid;
   gap: 2px;
@@ -871,12 +989,21 @@ h1 {
 .event-row {
   display: flex;
   gap: 10px;
-  align-items: baseline;
+  align-items: center;
   padding: 8px 0;
   color: var(--ink-soft);
   font-family: var(--font-ui);
   font-size: 12.5px;
   border-bottom: 1.2px dashed rgba(150, 122, 62, 0.28);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+/* 点击日志行展开删除入口：悬停/展开时给一点底色反馈 */
+.event-row:hover,
+.event-row.expanded {
+  background: rgba(255, 255, 255, 0.34);
 }
 
 .event-row time {
@@ -887,6 +1014,16 @@ h1 {
 
 .event-delete {
   margin-left: auto;
+}
+
+/* “完整日志”展开入口：把字段修改/节点类日志折叠起来 */
+.event-more {
+  justify-self: start;
+  margin-top: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1.3px dashed rgba(126, 100, 44, 0.3);
+  border-radius: 999px;
 }
 
 .section-empty {
@@ -1031,6 +1168,29 @@ h1 {
 
 .note-menu::-webkit-scrollbar {
   display: none;
+}
+
+.menu-head {
+  display: flex;
+  justify-content: flex-start;
+  margin: -8px 0 2px -6px;
+}
+
+.note-menu .menu-close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 20px;
+  line-height: 1;
+  text-align: center;
+  border-radius: 8px;
+}
+
+.note-menu .menu-close:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .note-menu button {
@@ -1300,32 +1460,34 @@ h1 {
 }
 
 .progress-inline {
-  display: flex;
+  display: grid;
   gap: 10px;
-  align-items: center;
   padding: 10px 12px;
   background: rgba(255, 252, 228, 0.26);
   border: 1.4px solid rgba(126, 100, 44, 0.3);
   border-radius: 10px;
 }
 
-.progress-inline input {
-  flex: 1 1 auto;
-  min-width: 0;
+/* 进度内容输入：独占一行，内容过长自动换行（textarea），与“添加节点”面板排布一致 */
+.progress-input {
+  width: 100%;
+  min-height: 42px;
   padding: 0;
   color: var(--ink);
   font-family: var(--font-ui);
   font-size: 13.5px;
+  line-height: 1.5;
+  resize: none;
   background: transparent;
   border: 0;
   outline: none;
+  overflow-wrap: anywhere;
 }
 
-.progress-inline .text-button {
-  flex: 0 0 auto;
-  padding: 2px 0 2px 14px;
-  border-left: 1.2px solid rgba(126, 100, 44, 0.24);
-  border-radius: 0;
+/* 进度完成时间：沿用其他功能的 .field.compact + .date-time-inputs 时间组件 */
+.progress-time-field {
+  padding-top: 8px;
+  border-top: 1.2px dashed rgba(126, 100, 44, 0.24);
 }
 
 .event-row {
@@ -1333,8 +1495,16 @@ h1 {
 }
 
 .event-icon {
-  color: var(--ink-faint);
-  font-family: var(--font-ui);
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--ink-soft);
+}
+
+.event-icon svg {
+  display: block;
+  width: 15px;
+  height: 15px;
 }
 
 .event-text {
@@ -1702,6 +1872,48 @@ h1 {
   font-size: 11.5px;
   background: var(--chip-tan-bg);
   border-radius: 999px;
+}
+
+.about-meta-line {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.about-updated {
+  color: var(--ink-faint);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+
+.about-release {
+  display: grid;
+  gap: 7px;
+}
+
+.about-release-title {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.about-release-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.about-release-list li::marker {
+  color: rgba(126, 100, 44, 0.5);
 }
 
 .about-list {

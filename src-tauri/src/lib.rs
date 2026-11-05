@@ -73,6 +73,8 @@ struct Milestone {
     title: String,
     planned_at: Option<String>,
     completed_at: Option<String>,
+    /// 节点开始执行时间：为空表示未开始，有值且 completed_at 为空表示进行中。
+    started_at: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -223,7 +225,7 @@ pub fn run() {
             create_task,
             update_task,
             add_task_progress,
-            delete_task_progress,
+            delete_task_event,
             delete_task,
             archive_task,
             suspend_task,
@@ -238,6 +240,8 @@ pub fn run() {
             update_milestone,
             complete_milestone,
             undo_complete_milestone,
+            start_milestone,
+            undo_start_milestone,
             delete_milestone,
             reorder_milestones,
             rename_category_data,
@@ -455,6 +459,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch("ALTER TABLE tasks ADD COLUMN reactivated_at TEXT;")
         .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
     conn.execute_batch("ALTER TABLE task_milestones ADD COLUMN sort_order INTEGER;")
+        .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
+    // 节点“进行中”状态：记录开始执行时间，撤销进行时清空。
+    conn.execute_batch("ALTER TABLE task_milestones ADD COLUMN started_at TEXT;")
         .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
     conn.execute_batch("ALTER TABLE recurring_task_settings ADD COLUMN repeat_count INTEGER NOT NULL DEFAULT 1;")
         .or_else(|err| if is_duplicate_column_error(&err) { Ok(()) } else { Err(err) })?;
@@ -724,6 +731,7 @@ fn update_task(
     deadline_at: Option<String>,
     is_urgent: bool,
     start_at: Option<String>,
+    new_owner: Option<String>,
 ) -> Result<Task, String> {
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
     let owner = normalize_owner(&owner)?;
@@ -791,7 +799,47 @@ fn update_task(
         ],
     )
     .map_err(|err| err.to_string())?;
-    query_task(&conn, &owner, &task_id)
+
+    // 分类迁移放在字段更新之后：前面按旧分类定位任务，迁移后按新分类返回。
+    let final_owner = match new_owner.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        Some(target) => {
+            let target = normalize_owner(target)?;
+            change_task_owner(&conn, &owner, &task_id, &target)?;
+            target
+        }
+        None => owner,
+    };
+    query_task(&conn, &final_owner, &task_id)
+}
+
+/// 把任务迁移到另一个分类：只改 tasks.owner，任务的事件/节点等数据随 task_id 一起保留。
+fn change_task_owner(
+    conn: &Connection,
+    owner: &str,
+    task_id: &str,
+    new_owner: &str,
+) -> Result<(), String> {
+    let task = query_task(conn, owner, task_id)?;
+    if task.owner == new_owner {
+        return Ok(());
+    }
+    let affected = conn
+        .execute(
+            "UPDATE tasks SET owner = ?1, updated_at = ?2 WHERE id = ?3 AND owner = ?4",
+            params![new_owner, now_string(), task_id, owner],
+        )
+        .map_err(|err| err.to_string())?;
+    if affected == 0 {
+        return Err("任务不存在".to_string());
+    }
+    insert_event(
+        conn,
+        task_id,
+        "owner_changed",
+        Some(&task.owner),
+        Some(new_owner),
+    )?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -829,8 +877,10 @@ fn add_task_progress(
     Ok(())
 }
 
+/// 删除一条生命周期日志：覆盖所有事件类型（创建、状态流转、进度、节点、字段修改等），
+/// 只删日志行，不改动任务与节点本身的数据。
 #[tauri::command]
-fn delete_task_progress(
+fn delete_task_event(
     state: State<DbState>,
     owner: String,
     task_id: String,
@@ -838,27 +888,26 @@ fn delete_task_progress(
 ) -> Result<(), String> {
     let owner = normalize_owner(&owner)?;
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    apply_delete_task_event(&conn, &owner, &task_id, event_id)
+}
+
+fn apply_delete_task_event(
+    conn: &Connection,
+    owner: &str,
+    task_id: &str,
+    event_id: i64,
+) -> Result<(), String> {
     // 先确认任务归属，避免跨用户删除事件。
-    query_task(&conn, &owner, &task_id)?;
-    // 仅允许删除“进度”类生命周期日志，其他类型日志不可删除。
-    let event_type: Option<String> = conn
-        .query_row(
-            "SELECT event_type FROM task_events WHERE id = ?1 AND task_id = ?2",
+    query_task(conn, owner, task_id)?;
+    let affected = conn
+        .execute(
+            "DELETE FROM task_events WHERE id = ?1 AND task_id = ?2",
             params![event_id, task_id],
-            |row| row.get(0),
         )
-        .optional()
         .map_err(|err| err.to_string())?;
-    match event_type.as_deref() {
-        None => return Err("记录不存在".to_string()),
-        Some("progress_updated") => {}
-        Some(_) => return Err("仅进度记录可删除".to_string()),
+    if affected == 0 {
+        return Err("记录不存在".to_string());
     }
-    conn.execute(
-        "DELETE FROM task_events WHERE id = ?1 AND task_id = ?2",
-        params![event_id, task_id],
-    )
-    .map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -1283,7 +1332,7 @@ fn list_milestones(
     let mut stmt = conn
         .prepare(
             "
-            SELECT id, task_id, title, planned_at, completed_at, created_at, updated_at
+            SELECT id, task_id, title, planned_at, completed_at, created_at, updated_at, started_at
             FROM task_milestones
             WHERE task_id = ?1
             ORDER BY sort_order IS NULL ASC, sort_order ASC,
@@ -1466,6 +1515,103 @@ fn undo_complete_milestone(
         &conn,
         &task_id,
         "milestone_completed_undone",
+        None,
+        Some(&milestone.title),
+    )?;
+    Ok(())
+}
+
+/// 节点标记为进行中：记录开始时间；已完成的节点不允许开始。
+#[tauri::command]
+fn start_milestone(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+    milestone_id: i64,
+) -> Result<Milestone, String> {
+    let owner = normalize_owner(&owner)?;
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    apply_start_milestone(&conn, &owner, &task_id, milestone_id)
+}
+
+/// 撤销节点进行中：清空开始时间，回到未开始；已完成节点不允许撤销。
+#[tauri::command]
+fn undo_start_milestone(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+    milestone_id: i64,
+) -> Result<(), String> {
+    let owner = normalize_owner(&owner)?;
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    apply_undo_start_milestone(&conn, &owner, &task_id, milestone_id)
+}
+
+fn apply_start_milestone(
+    conn: &Connection,
+    owner: &str,
+    task_id: &str,
+    milestone_id: i64,
+) -> Result<Milestone, String> {
+    let task = query_task(conn, owner, task_id)?;
+    if task.is_recurring { return Err("周期任务不支持节点".to_string()); }
+    if task.archived_at.is_some() {
+        return Err("已归档任务不能修改节点".to_string());
+    }
+    let milestone = query_milestone(conn, task_id, milestone_id)?;
+    if milestone.completed_at.is_some() {
+        return Err("已完成的节点不能标记为进行中".to_string());
+    }
+    // 已是进行中：幂等返回，不重复记录事件。
+    if milestone.started_at.is_some() {
+        return Ok(milestone);
+    }
+    let now = now_string();
+    conn.execute(
+        "
+        UPDATE task_milestones
+        SET started_at = ?1, completed_at = NULL, updated_at = ?1
+        WHERE id = ?2 AND task_id = ?3
+        ",
+        params![now, milestone_id, task_id],
+    )
+    .map_err(|err| err.to_string())?;
+    insert_event(conn, task_id, "milestone_started", None, Some(&milestone.title))?;
+    query_milestone(conn, task_id, milestone_id)
+}
+
+fn apply_undo_start_milestone(
+    conn: &Connection,
+    owner: &str,
+    task_id: &str,
+    milestone_id: i64,
+) -> Result<(), String> {
+    let task = query_task(conn, owner, task_id)?;
+    if task.is_recurring { return Err("周期任务不支持节点".to_string()); }
+    if task.archived_at.is_some() {
+        return Err("已归档任务不能修改节点".to_string());
+    }
+    let milestone = query_milestone(conn, task_id, milestone_id)?;
+    if milestone.completed_at.is_some() {
+        return Err("已完成的节点不能撤销进行中".to_string());
+    }
+    if milestone.started_at.is_none() {
+        return Ok(());
+    }
+    let now = now_string();
+    conn.execute(
+        "
+        UPDATE task_milestones
+        SET started_at = NULL, updated_at = ?1
+        WHERE id = ?2 AND task_id = ?3
+        ",
+        params![now, milestone_id, task_id],
+    )
+    .map_err(|err| err.to_string())?;
+    insert_event(
+        conn,
+        task_id,
+        "milestone_start_undone",
         None,
         Some(&milestone.title),
     )?;
@@ -1967,7 +2113,7 @@ fn query_milestone(
 ) -> Result<Milestone, String> {
     conn.query_row(
         "
-        SELECT id, task_id, title, planned_at, completed_at, created_at, updated_at
+        SELECT id, task_id, title, planned_at, completed_at, created_at, updated_at, started_at
         FROM task_milestones
         WHERE id = ?1 AND task_id = ?2
         ",
@@ -1988,6 +2134,7 @@ fn map_milestone(row: &rusqlite::Row) -> rusqlite::Result<Milestone> {
         completed_at: row.get(4)?,
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
+        started_at: row.get(7)?,
     })
 }
 
@@ -2118,6 +2265,186 @@ mod local_hardening_tests {
 
         drop(conn);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 节点“进行中”状态：开始/撤销开始可双向切换并记录事件，重复开始幂等，
+    /// 已完成的节点不允许再开始或撤销进行中（操作与节点状态的关系固定在这里）。
+    #[test]
+    fn milestone_start_transitions_are_consistent() {
+        let dir = std::env::temp_dir().join(format!(
+            "sticky-note-milestone-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("创建临时目录");
+        let path = dir.join("test.sqlite3");
+        let conn = open_database(&path).expect("打开数据库");
+        migrate(&conn).expect("初始化表结构");
+        let now = "2026-01-01T00:00:00Z";
+
+        conn.execute(
+            "INSERT INTO tasks (id, owner, title, is_urgent, created_at, updated_at)
+             VALUES ('t1', '分类', '任务', 0, ?1, ?1)",
+            params![now],
+        )
+        .expect("插入任务");
+        conn.execute(
+            "INSERT INTO task_milestones (task_id, title, planned_at, completed_at, created_at, updated_at)
+             VALUES ('t1', '节点A', NULL, NULL, ?1, ?1)",
+            params![now],
+        )
+        .expect("插入节点");
+        let milestone_id = conn.last_insert_rowid();
+
+        let started = apply_start_milestone(&conn, "分类", "t1", milestone_id).expect("开始节点");
+        assert!(started.started_at.is_some(), "开始后应记录 started_at");
+
+        // 幂等：重复开始不重复写入事件
+        apply_start_milestone(&conn, "分类", "t1", milestone_id).expect("重复开始");
+        let started_events: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_events WHERE task_id='t1' AND event_type='milestone_started'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("统计事件");
+        assert_eq!(started_events, 1, "重复开始只应产生一条事件");
+
+        apply_undo_start_milestone(&conn, "分类", "t1", milestone_id).expect("撤销进行中");
+        let milestone = query_milestone(&conn, "t1", milestone_id).expect("读取节点");
+        assert!(milestone.started_at.is_none(), "撤销后 started_at 应为空");
+
+        // 已完成节点：既不能再开始，也不能撤销进行中
+        conn.execute(
+            "UPDATE task_milestones SET completed_at = ?1 WHERE id = ?2",
+            params![now, milestone_id],
+        )
+        .expect("标记完成");
+        assert!(apply_start_milestone(&conn, "分类", "t1", milestone_id).is_err());
+        assert!(apply_undo_start_milestone(&conn, "分类", "t1", milestone_id).is_err());
+
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 生命周期日志删除：所有事件类型都可删除，只删日志行；跨任务/不存在的记录报错。
+    #[test]
+    fn task_event_deletion_covers_all_event_types() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化表结构");
+        let now = "2026-01-01T00:00:00Z";
+        conn.execute(
+            "INSERT INTO tasks (id, owner, title, is_urgent, created_at, updated_at)
+             VALUES ('t1', '分类', '任务', 0, ?1, ?1), ('t2', '分类', '别的任务', 0, ?1, ?1)",
+            params![now],
+        )
+        .expect("插入任务");
+        for (task_id, event_type) in [
+            ("t1", "created"),
+            ("t1", "suspended"),
+            ("t1", "progress_updated"),
+            ("t2", "created"),
+        ] {
+            insert_event(&conn, task_id, event_type, None, Some("内容")).expect("插入事件");
+        }
+
+        // 创建/挂起/进度等任意类型都可以删除
+        let created_id: i64 = conn
+            .query_row(
+                "SELECT id FROM task_events WHERE task_id='t1' AND event_type='created'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("读取创建事件");
+        apply_delete_task_event(&conn, "分类", "t1", created_id).expect("删除创建日志");
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM task_events WHERE id=?1", params![created_id], |row| row.get(0))
+            .expect("统计删除结果");
+        assert_eq!(remaining, 0, "日志行应被删除");
+
+        let suspended_id: i64 = conn
+            .query_row(
+                "SELECT id FROM task_events WHERE task_id='t1' AND event_type='suspended'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("读取挂起事件");
+        apply_delete_task_event(&conn, "分类", "t1", suspended_id).expect("删除挂起日志");
+
+        // 不存在的记录、或不属于该任务的事件都要报错
+        assert!(apply_delete_task_event(&conn, "分类", "t1", 999_999).is_err());
+        let other_task_event: i64 = conn
+            .query_row(
+                "SELECT id FROM task_events WHERE task_id='t2'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("读取其他任务事件");
+        assert!(apply_delete_task_event(&conn, "分类", "t1", other_task_event).is_err());
+    }
+
+    /// 任务分类迁移：只改归属分类，任务的事件与节点数据随任务一起保留，并记录分类变更事件。
+    #[test]
+    fn task_category_move_keeps_history() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化表结构");
+        let now = "2026-01-01T00:00:00Z";
+        conn.execute(
+            "INSERT INTO tasks (id, owner, title, is_urgent, created_at, updated_at)
+             VALUES ('t1', '工作', '任务', 0, ?1, ?1)",
+            params![now],
+        )
+        .expect("插入任务");
+        conn.execute(
+            "INSERT INTO task_milestones (task_id, title, created_at, updated_at)
+             VALUES ('t1', '节点', ?1, ?1)",
+            params![now],
+        )
+        .expect("插入节点");
+        insert_event(&conn, "t1", "created", None, None).expect("插入创建事件");
+
+        change_task_owner(&conn, "工作", "t1", "学习").expect("迁移分类");
+        let task = query_task(&conn, "学习", "t1").expect("读取迁移后的任务");
+        assert_eq!(task.owner, "学习", "任务应归属新分类");
+        assert!(query_task(&conn, "工作", "t1").is_err(), "旧分类下不应再查到该任务");
+
+        // 事件与节点仍挂在同一个 task_id 上（历史随任务迁移）
+        let events: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_events WHERE task_id='t1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("统计事件");
+        assert_eq!(events, 2, "创建事件 + 分类变更事件都应保留");
+        let milestones: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_milestones WHERE task_id='t1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("统计节点");
+        assert_eq!(milestones, 1, "节点应随任务保留");
+        let event_type: String = conn
+            .query_row(
+                "SELECT event_type FROM task_events WHERE task_id='t1' ORDER BY id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("读取最新事件");
+        assert_eq!(event_type, "owner_changed");
+
+        // 迁移到相同分类是幂等的，不重复写日志
+        change_task_owner(&conn, "学习", "t1", "学习").expect("同分类迁移");
+        let events_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_events WHERE task_id='t1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("统计事件");
+        assert_eq!(events_after, 2);
     }
 
     /// 跨日归档依赖「ISO 日期的字典序等于时间序」这一不变量。

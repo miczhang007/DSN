@@ -9,7 +9,6 @@ import {
   compareEventTime,
   dateTimeToIso,
   defaultStartTime,
-  localDateInputValue,
   nowLocalParts,
   splitIsoForInput,
 } from "../lib/datetime.js";
@@ -47,7 +46,14 @@ export function useTaskDetail({
   const editingMilestoneId = ref(null);
   const expandedMilestoneId = ref("");
   const milestoneEditDraft = reactive({ title: "", plannedAt: "", plannedAtTime: "" });
-  const editDraft = reactive({ title: "", isUrgent: false, isFuture: false, startAt: "", startAtTime: "" });
+  const editDraft = reactive({
+    title: "",
+    category: "",
+    isUrgent: false,
+    isFuture: false,
+    startAt: "",
+    startAtTime: "",
+  });
   const milestoneFormOpen = ref(false);
   const progressDraft = ref("");
   const progressDate = ref("");
@@ -55,6 +61,11 @@ export function useTaskDetail({
   const detailEditOpen = ref(false);
   const progressFormOpen = ref(false);
   const detailReturnView = ref("home");
+  // 生命周期日志默认只展开任务主流程（创建/挂起/激活/进行中/完成/进度），
+  // 字段修改与节点类日志折叠，点击“完整日志”后展开全部。
+  const fullLogOpen = ref(false);
+  // 生命周期日志行：点击展开删除入口（同时只展开一行）。
+  const expandedEventId = ref(null);
 
   // —— 节点行：点击展开操作，按住拖动排序（与任务排序一致）——
   const milestoneListEl = ref(null);
@@ -74,6 +85,7 @@ export function useTaskDetail({
     detailReturnView.value = view.value === "history" ? "history" : view.value === "recurring-setting" ? "recurring-setting" : "home";
     selectedTask.value = task;
     editDraft.title = task.title;
+    editDraft.category = task.owner || currentCategory.value;
     editDraft.isUrgent = Boolean(task.is_urgent);
     editDraft.isFuture = Boolean(task.start_at);
     const startParts = splitIsoForInput(task.start_at);
@@ -81,13 +93,16 @@ export function useTaskDetail({
     editDraft.startAtTime = startParts.time;
     detailEditOpen.value = false;
     progressFormOpen.value = false;
+    fullLogOpen.value = false;
+    expandedEventId.value = null;
     expandedMilestoneId.value = "";
     editingMilestoneId.value = null;
     milestoneFormOpen.value = false;
     progressDraft.value = "";
-    // 记录时间默认不指定：日期为今天，具体时间留空（未指定时仅按日期记录）。
-    progressDate.value = localDateInputValue();
-    progressTime.value = "";
+    // 进度完成时间默认当前时间，可在展开的面板里改成实际完成时间。
+    const nowParts = nowLocalParts();
+    progressDate.value = nowParts.date;
+    progressTime.value = nowParts.time;
     taskEvents.value = await invoke("get_task_events", {
       owner: currentCategory.value,
       taskId: task.id,
@@ -306,6 +321,8 @@ export function useTaskDetail({
   async function saveTaskChanges() {
     if (!selectedTask.value) return;
     if (!editDraft.title) return;
+    const targetCategory = editDraft.category || selectedTask.value.owner || currentCategory.value;
+    const movedCategory = targetCategory !== (selectedTask.value.owner || currentCategory.value);
     await invoke("update_task", {
       owner: currentCategory.value,
       taskId: selectedTask.value.id,
@@ -316,12 +333,20 @@ export function useTaskDetail({
         !selectedTask.value.is_recurring && editDraft.isFuture && editDraft.startAt
           ? dateTimeToIso(editDraft.startAt, editDraft.startAtTime)
           : null,
+      newOwner: movedCategory ? targetCategory : null,
     });
-    const updated = await invoke("get_task", {
+    if (movedCategory) {
+      // 任务已迁移到别的分类：回到列表（当前分类里已经看不到这条任务了）。
+      selectedTask.value = null;
+      view.value = "home";
+      await refreshActiveTasks();
+      return;
+    }
+    const refreshed = await invoke("get_task", {
       owner: currentCategory.value,
       taskId: selectedTask.value.id,
     });
-    await openTask(updated);
+    await openTask(refreshed);
   }
 
   async function reloadTaskDetail() {
@@ -342,6 +367,23 @@ export function useTaskDetail({
     milestoneDraft.plannedAt = "";
     milestoneDraft.plannedAtTime = "";
     milestoneFormOpen.value = false;
+  }
+
+  /** 「添加节点」与「进度」两个内联面板互斥展开，避免同时占用详情页空间。 */
+  function toggleMilestoneForm() {
+    milestoneFormOpen.value = !milestoneFormOpen.value;
+    if (milestoneFormOpen.value) progressFormOpen.value = false;
+  }
+
+  function toggleProgressForm() {
+    progressFormOpen.value = !progressFormOpen.value;
+    if (progressFormOpen.value) {
+      milestoneFormOpen.value = false;
+      // 每次展开都把“进度完成时间”重置为当前时间，需要时再改成实际完成时间。
+      const nowParts = nowLocalParts();
+      progressDate.value = nowParts.date;
+      progressTime.value = nowParts.time;
+    }
   }
 
   async function addMilestone() {
@@ -392,8 +434,40 @@ export function useTaskDetail({
       taskId: selectedTask.value.id,
       milestoneId: milestone.id,
     });
-    expandedMilestoneId.value = "";
     await reloadTaskDetail();
+    // 撤销完成后节点可能回到“进行中/未开始”，保持当前行展开便于继续操作。
+    expandedMilestoneId.value = milestone.id;
+  }
+
+  /** 节点标记为进行中：仅未完成节点可开始，完成后可撤销进行中。 */
+  async function startMilestone(milestone) {
+    if (!selectedTask.value) return;
+    try {
+      await invoke("start_milestone", {
+        owner: currentCategory.value,
+        taskId: selectedTask.value.id,
+        milestoneId: milestone.id,
+      });
+      await reloadTaskDetail();
+      expandedMilestoneId.value = milestone.id;
+    } catch (err) {
+      if (notify) notify(err, "节点操作失败");
+    }
+  }
+
+  async function undoStartMilestone(milestone) {
+    if (!selectedTask.value) return;
+    try {
+      await invoke("undo_start_milestone", {
+        owner: currentCategory.value,
+        taskId: selectedTask.value.id,
+        milestoneId: milestone.id,
+      });
+      await reloadTaskDetail();
+      expandedMilestoneId.value = milestone.id;
+    } catch (err) {
+      if (notify) notify(err, "节点操作失败");
+    }
   }
 
   function deleteMilestone(milestone) {
@@ -435,25 +509,36 @@ export function useTaskDetail({
     await openTask(updated);
   }
 
-  async function deleteTaskProgress(event) {
+  /** 点击日志行展开操作入口；再点一次收起。 */
+  function toggleEventActions(event) {
+    expandedEventId.value = expandedEventId.value === event.id ? null : event.id;
+  }
+
+  // 生命周期日志（所有类型）都可删除：只删日志行，不影响任务、节点与进度数据本身。
+  function deleteTaskEvent(event) {
     if (!selectedTask.value) return;
     const taskId = selectedTask.value.id;
-    openConfirmation("删除进度", "确定删除这条进度记录吗？此操作不能恢复。", () =>
-      removeTaskProgress(taskId, event.id),
+    openConfirmation("删除日志", "确定删除这条生命周期日志吗？此操作不能恢复。", () =>
+      removeTaskEvent(taskId, event.id),
     );
   }
 
-  async function removeTaskProgress(taskId, eventId) {
-    await invoke("delete_task_progress", {
-      owner: currentCategory.value,
-      taskId,
-      eventId,
-    });
-    const updated = await invoke("get_task", {
-      owner: currentCategory.value,
-      taskId,
-    });
-    await openTask(updated);
+  async function removeTaskEvent(taskId, eventId) {
+    try {
+      await invoke("delete_task_event", {
+        owner: currentCategory.value,
+        taskId,
+        eventId,
+      });
+      if (expandedEventId.value === eventId) expandedEventId.value = null;
+      const updated = await invoke("get_task", {
+        owner: currentCategory.value,
+        taskId,
+      });
+      await openTask(updated);
+    } catch (err) {
+      if (notify) notify(err, "删除日志失败");
+    }
   }
 
   function confirmArchiveTask(taskId) {
@@ -497,6 +582,8 @@ export function useTaskDetail({
     progressTime,
     detailEditOpen,
     progressFormOpen,
+    fullLogOpen,
+    expandedEventId,
     detailReturnView,
     milestoneListEl,
     milestoneDragging,
@@ -518,14 +605,19 @@ export function useTaskDetail({
     reloadTaskDetail,
     openMilestoneForm,
     closeMilestoneForm,
+    toggleMilestoneForm,
+    toggleProgressForm,
     addMilestone,
     startMilestoneEdit,
     cancelMilestoneEdit,
     saveMilestoneEdit,
     undoCompleteMilestone,
+    startMilestone,
+    undoStartMilestone,
     deleteMilestone,
     isMilestoneOverdue,
     saveTaskProgress,
-    deleteTaskProgress,
+    toggleEventActions,
+    deleteTaskEvent,
   };
 }

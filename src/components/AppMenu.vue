@@ -1,6 +1,10 @@
 <template>
   <Transition name="fade">
     <nav v-if="open" class="note-menu" aria-label="菜单" @click.stop>
+      <div class="menu-head">
+        <button type="button" class="menu-close" aria-label="关闭菜单" @click="$emit('close')">×</button>
+      </div>
+
       <div class="menu-nav">
         <button type="button" @click="$emit('history')">历史任务</button>
         <button type="button" @click="$emit('recurring-settings')">周期任务规则</button>
@@ -98,6 +102,7 @@ defineEmits([
   "categories",
   "about",
   "exit",
+  "close",
   "change-size",
   "change-theme",
   "change-font",
