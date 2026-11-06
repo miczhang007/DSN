@@ -48,7 +48,7 @@ const dataOverviewFixture = {
 const importPreviewFixture = {
   path: "C:\\Users\\test\\Desktop\\桌面便签数据备份.json",
   fileName: "桌面便签数据备份.json",
-  appVersion: "1.5.0",
+  appVersion: "1.5.1",
   exportedAt: "2026-11-06T02:00:00+00:00",
   dataVersion: "2026-11-06T01:50:00+00:00",
   taskCount: 3,

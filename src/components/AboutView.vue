@@ -61,7 +61,7 @@ const props = defineProps({
 
 defineEmits(["open-external"]);
 
-// 把 `v1.5.0 - 2026-11-06 14:34` 拆成版本号与更新时间，作为信息列表中的两行。
+// 把 `v1.5.1 - 2026-11-06 23:01` 拆成版本号与更新时间，作为信息列表中的两行。
 const releaseMatch = computed(() => /^(v[\d.]+)\s*-\s*(.+)$/.exec(props.versionLabel || ""));
 const versionText = computed(() => releaseMatch.value?.[1] ?? props.versionLabel);
 const updatedAt = computed(() => releaseMatch.value?.[2] ?? "");

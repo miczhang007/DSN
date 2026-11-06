@@ -3,7 +3,7 @@
 本目录存放桌面便签主界面改版的视觉稿与设计说明。设计稿为示意图，用于确认方向与信息结构；图中文字为占位示意，实际文案以现有产品文案为准。
 
 - 视觉稿：`mockups/01-home-task-list.png` ~ `07-settings-panel.png`
-- 当前代码基线：`src/App.vue` + `src/components/*` + `src/composables/*`（v1.5.0，无边框单窗口 360×520）
+- 当前代码基线：`src/App.vue` + `src/components/*` + `src/composables/*`（v1.5.1，无边框单窗口 360×520）
 
 ---
 

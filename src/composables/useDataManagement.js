@@ -154,12 +154,15 @@ export function useDataManagement({
     const added = result?.addedTasks ?? 0;
     const updated = result?.updatedTasks ?? 0;
     const kept = result?.keptLocalTasks ?? 0;
+    const orphan = result?.orphanRecurringTasks ?? 0;
+    const orphanSuffix = orphan ? `；${orphan} 条任务的周期规则已不存在，已转为普通任务` : "";
     if (result?.mode === "overwrite") {
-      return `完全覆盖完成：已使用备份数据（${added} 条任务）`;
+      return `完全覆盖完成：已使用备份数据（${added} 条任务）${orphanSuffix}`;
     }
     const parts = [`新增 ${added} 条`];
     if (updated) parts.push(`覆盖 ${updated} 条`);
     if (kept) parts.push(`保留本地 ${kept} 条`);
+    if (orphan) parts.push(`${orphan} 条任务转为普通任务`);
     return `增量导入完成：${parts.join("，")}`;
   }
 

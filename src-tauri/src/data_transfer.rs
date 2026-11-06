@@ -207,6 +207,8 @@ pub struct ImportResult {
     added_tasks: usize,
     updated_tasks: usize,
     kept_local_tasks: usize,
+    /// 备份中周期规则已不存在、导入时转为普通任务的数量。
+    orphan_recurring_tasks: usize,
     categories: Vec<String>,
     preferences: Option<Preferences>,
 }
@@ -808,7 +810,9 @@ fn apply_backup(
         .map_err(db_error)?;
     }
 
-    // 周期任务必须能找到对应规则；增量模式下本地已有规则也算满足。
+    // 兼容历史备份：已软删除的任务可能还引用已被删除的周期规则。
+    // 这类引用不应阻断整包导入，转为普通任务并保留任务本身的数据。
+    let mut orphan_recurring_tasks = 0usize;
     for task in &backup.tasks {
         let Some(setting_id) = task.recurring_setting_id.as_deref() else {
             continue;
@@ -821,10 +825,12 @@ fn apply_backup(
             )
             .map_err(db_error)?;
         if !exists {
-            return Err(format!(
-                "备份文件不完整：任务“{}”引用的周期规则不存在",
-                task.title
-            ));
+            tx.execute(
+                "UPDATE tasks SET recurring_setting_id = NULL WHERE id = ?1",
+                params![task.id],
+            )
+            .map_err(db_error)?;
+            orphan_recurring_tasks += 1;
         }
     }
 
@@ -848,6 +854,7 @@ fn apply_backup(
         added_tasks,
         updated_tasks,
         kept_local_tasks,
+        orphan_recurring_tasks,
         categories,
         preferences: backup.preferences.clone(),
     })
@@ -1163,7 +1170,7 @@ mod tests {
         BackupFile {
             format: BACKUP_FORMAT.to_string(),
             schema_version: BACKUP_SCHEMA_VERSION,
-            app_version: "1.5.0".to_string(),
+            app_version: "1.5.1".to_string(),
             exported_at: "2026-01-02T00:00:00+00:00".to_string(),
             data_version: Some("2026-01-02T00:00:00+00:00".to_string()),
             categories: vec!["工作".to_string(), "生活".to_string()],
@@ -1412,17 +1419,22 @@ mod tests {
             [],
         )
         .expect("写入本地任务");
+        conn.execute_batch(
+            "CREATE TRIGGER fail_import BEFORE INSERT ON tasks
+             WHEN NEW.title = '导入失败'
+             BEGIN SELECT RAISE(ABORT, '模拟导入失败'); END;",
+        )
+        .expect("创建失败触发器");
 
-        let mut backup = backup_with(vec![task_record(
+        let backup = backup_with(vec![task_record(
             "imported-1",
             "导入",
-            "导入任务",
+            "导入失败",
             "2026-01-02T00:00:00+00:00",
         )]);
-        backup.tasks[0].recurring_setting_id = Some("missing-setting".to_string());
 
         let error = apply_backup(&conn, &backup, ImportMode::Overwrite).expect_err("应导入失败");
-        assert!(error.contains("周期规则不存在"), "错误信息应说明缺失规则：{error}");
+        assert!(error.contains("模拟导入失败"), "错误信息应说明导入失败：{error}");
 
         // 事务回滚：失败后本地数据必须原样保留，而不是被“清空一半”。
         let remaining: i64 = conn
@@ -1435,6 +1447,37 @@ mod tests {
             })
             .expect("读取本地任务");
         assert_eq!(local_title, "本地任务");
+    }
+
+    #[test]
+    fn import_turns_orphan_recurring_tasks_into_regular_tasks() {
+        let conn = test_connection();
+        let mut backup = backup_with(vec![task_record(
+            "imported-1",
+            "生活",
+            "饭后散步（第35周）",
+            "2026-01-02T00:00:00+00:00",
+        )]);
+        backup.tasks[0].recurring_setting_id = Some("missing-setting".to_string());
+
+        let result = apply_backup(&conn, &backup, ImportMode::Overwrite)
+            .expect("缺失周期规则不应阻断整包导入");
+        assert_eq!(result.orphan_recurring_tasks, 1);
+
+        let setting_id: Option<String> = conn
+            .query_row(
+                "SELECT recurring_setting_id FROM tasks WHERE id='imported-1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("读取导入任务");
+        assert_eq!(setting_id, None);
+        let title: String = conn
+            .query_row("SELECT title FROM tasks WHERE id='imported-1'", [], |row| {
+                row.get(0)
+            })
+            .expect("读取导入任务标题");
+        assert_eq!(title, "饭后散步（第35周）");
     }
 
     #[test]

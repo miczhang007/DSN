@@ -1640,6 +1640,11 @@ fn delete_recurring_task_setting(state: State<DbState>, owner: String, setting_i
     if setting.status != "已作废" { return Err("只有已作废的周期任务规则可以删除".to_string()); }
     let active_task_count: i64 = conn.query_row("SELECT COUNT(1) FROM tasks WHERE owner=?1 AND recurring_setting_id=?2 AND deleted_at IS NULL", params![owner, setting_id], |row| row.get(0)).map_err(|err| err.to_string())?;
     if active_task_count > 0 { return Err(format!("该规则仍被 {} 条未删除任务引用，无法删除。请先处理相关任务。", active_task_count)); }
+    // 软删除任务不会再出现在界面中，但会随备份导出；先解除引用，避免产生“任务引用的规则不存在”的孤儿数据。
+    conn.execute(
+        "UPDATE tasks SET recurring_setting_id=NULL, updated_at=?1 WHERE owner=?2 AND recurring_setting_id=?3 AND deleted_at IS NOT NULL",
+        params![now_string(), owner, setting_id],
+    ).map_err(|err| err.to_string())?;
     conn.execute("DELETE FROM recurring_setting_events WHERE setting_id=?1", params![setting_id]).map_err(|err| err.to_string())?;
     conn.execute("DELETE FROM recurring_task_settings WHERE id=?1 AND owner=?2", params![setting_id, owner]).map_err(|err| err.to_string())?;
     Ok(())
