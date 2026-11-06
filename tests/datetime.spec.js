@@ -5,6 +5,7 @@ import {
   defaultStartTime,
   formatDeadline,
   formatTime,
+  formatTimestamp,
   formatTimeValue,
   localDateInputValue,
   nowLocalParts,
@@ -71,6 +72,16 @@ describe("日期时间工具", () => {
     expect(formatTime("")).toBe("");
     expect(formatTimeValue("")).toBe("未设置");
     expect(formatTimeValue("2026-11-02")).toBe(formatDeadline("2026-11-02"));
+  });
+
+  it("formatTimestamp 展示精确时间戳，空值与非法值安全回落", () => {
+    expect(formatTimestamp("")).toBe("");
+    expect(formatTimestamp(null)).toBe("");
+    expect(formatTimestamp("不是时间")).toBe("不是时间");
+
+    const text = formatTimestamp("2026-11-06T02:30:00+00:00");
+    expect(text).toContain("2026");
+    expect(text).toMatch(/\d{2}:\d{2}:\d{2}/);
   });
 
   it("compareEventTime 只日期事件排在同一天具体时间之后，同时间按 id 稳定", () => {

@@ -9,6 +9,8 @@
         <button type="button" @click="$emit('history')">历史任务</button>
         <button type="button" @click="$emit('recurring-settings')">周期任务规则</button>
         <button type="button" @click="$emit('categories')">分类管理</button>
+        <button type="button" @click="$emit('merge-tasks')">合并任务</button>
+        <button type="button" @click="$emit('data-management')">数据管理</button>
       </div>
 
       <div class="menu-group">
@@ -100,6 +102,8 @@ defineEmits([
   "history",
   "recurring-settings",
   "categories",
+  "merge-tasks",
+  "data-management",
   "about",
   "exit",
   "close",

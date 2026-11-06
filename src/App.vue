@@ -54,6 +54,8 @@
         @history="openHistory"
         @recurring-settings="openRecurringSettings"
         @categories="openCategoryManager"
+        @merge-tasks="openMergeTasks"
+        @data-management="openDataManagement"
         @about="openAbout"
         @exit="exitApp"
         @close="closeMenu"
@@ -189,6 +191,28 @@
               {{ category }}
             </button>
             <div class="category-actions">
+              <div class="category-order">
+                <button
+                  class="category-order-button"
+                  type="button"
+                  aria-label="上移分类"
+                  title="上移"
+                  :disabled="categories.indexOf(category) === 0"
+                  @click="moveCategory(category, -1)"
+                >
+                  ↑
+                </button>
+                <button
+                  class="category-order-button"
+                  type="button"
+                  aria-label="下移分类"
+                  title="下移"
+                  :disabled="categories.indexOf(category) === categories.length - 1"
+                  @click="moveCategory(category, 1)"
+                >
+                  ↓
+                </button>
+              </div>
               <button
                 v-if="editingCategory === category"
                 class="text-button"
@@ -319,16 +343,79 @@
       </section>
 
       <section v-else-if="view === 'history'" class="content history-view" @click.stop>
-        <div v-if="archivedTasks.length" class="history-list">
+        <div class="history-toolbar">
+          <div class="history-filter-row">
+            <select
+              v-model="historyCategory"
+              class="history-category-select"
+              aria-label="按分类筛选历史任务"
+            >
+              <option value="all">全部分类</option>
+              <option v-for="category in historyCategoryOptions" :key="category" :value="category">
+                {{ category }}
+              </option>
+            </select>
+            <div class="segmented history-filter" role="group" aria-label="历史任务类型">
+              <button
+                v-for="option in historyFilterOptions"
+                :key="option.value"
+                type="button"
+                :class="{ active: historyFilter === option.value }"
+                @click="historyFilter = option.value"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+          </div>
+          <div class="history-search-row">
+            <input
+              v-model="historySearch"
+              class="history-search"
+              type="search"
+              placeholder="搜索任务名"
+              aria-label="搜索历史任务"
+            />
+            <button
+              class="text-button history-select-toggle"
+              type="button"
+              @click="toggleHistorySelectionMode"
+            >
+              {{ historySelectionMode ? "取消" : "选择" }}
+            </button>
+          </div>
+        </div>
+        <div v-if="historySelectionMode && filteredArchivedTasks.length" class="history-selection-bar">
+          <button class="text-button" type="button" @click="toggleSelectAllHistory">
+            {{ allFilteredHistorySelected ? "取消全选" : "全选" }}
+          </button>
+          <span class="history-selected-count">已选 {{ selectedHistoryIds.length }} 项</span>
+          <button
+            class="text-button danger"
+            type="button"
+            :disabled="!selectedHistoryIds.length"
+            @click="batchDeleteHistoryTasks"
+          >
+            批量删除
+          </button>
+        </div>
+        <div v-if="filteredArchivedTasks.length" class="history-list" :class="{ 'is-selecting': historySelectionMode }">
           <article
-            v-for="task in archivedTasks"
+            v-for="task in filteredArchivedTasks"
             :key="task.id"
             class="history-item"
             @click.self="expandedHistoryTaskId = ''"
           >
-            <button class="history-main" type="button" @click="openTask(task)">
+            <input
+              v-if="historySelectionMode"
+              class="history-select"
+              type="checkbox"
+              :checked="isHistorySelected(task.id)"
+              :aria-label="`选择 ${task.title}`"
+              @change="toggleHistorySelection(task)"
+            />
+            <button class="history-main" type="button" @click="openHistoryTask(task)">
               <span>{{ task.title }}</span>
-              <small>{{ task.completed_at ? '已完成' : '未完成' }} · {{ formatTime(task.archived_at) }}</small>
+              <small>{{ task.owner }} · {{ task.is_recurring ? '周期任务 · ' : '' }}{{ task.completed_at ? '已完成' : '未完成' }} · {{ formatTime(task.archived_at) }}</small>
             </button>
             <button class="icon-button history-action-toggle" type="button" aria-label="更多操作" @click="toggleHistoryActions(task.id)">
               <span class="vertical-dots" aria-hidden="true"><span></span><span></span><span></span></span>
@@ -342,7 +429,68 @@
           </article>
         </div>
         <div v-else class="empty-state">
-          <p>还没有历史任务</p>
+          <p>{{ archivedTasks.length ? "没有匹配的历史任务" : "还没有历史任务" }}</p>
+          <button
+            v-if="archivedTasks.length"
+            class="text-button"
+            type="button"
+            @click="clearHistoryFilters"
+          >
+            清除筛选
+          </button>
+        </div>
+      </section>
+
+      <section v-else-if="view === 'merge-tasks'" class="content merge-tasks-view" @click.stop>
+        <p class="merge-hint">勾选两个及以上未归档任务进行合并；周期任务由规则自动生成，不参与合并。</p>
+        <div v-if="mergeableTasks.length" class="merge-task-list" role="list">
+          <label
+            v-for="task in mergeableTasks"
+            :key="task.id"
+            class="merge-task-row"
+            :class="{ selected: isMergeTaskSelected(task.id) }"
+          >
+            <input
+              type="checkbox"
+              :checked="isMergeTaskSelected(task.id)"
+              @change="toggleMergeTask(task)"
+            />
+            <span class="merge-task-main">
+              <span class="merge-task-title" :class="{ done: taskStatus(task) === 'completed' }">{{ task.title }}</span>
+              <span class="merge-task-meta">
+                {{ taskStatusText(task) }}
+                <template v-if="task.is_urgent"> · 紧急</template>
+                <template v-if="task.next_milestone_title"> · 下一节点：{{ task.next_milestone_title }}</template>
+              </span>
+            </span>
+          </label>
+        </div>
+        <p v-else class="section-empty">当前分类没有可合并的未归档任务</p>
+
+        <div v-if="mergeableTasks.length" class="merge-editor">
+          <label class="field">
+            <span>合并后的任务名称</span>
+            <input
+              v-model="mergeTitle"
+              type="text"
+              maxlength="80"
+              placeholder="输入合并后的任务名称"
+            />
+          </label>
+          <div class="merge-selection-meta">
+            <span>已选 {{ mergeSelectedIds.length }} 个任务</span>
+            <button class="text-button" type="button" :disabled="mergeBusy" @click="toggleSelectAllMergeTasks">
+              {{ allMergeTasksSelected ? "清空选择" : "全选" }}
+            </button>
+          </div>
+          <button
+            class="primary-action primary-block"
+            type="button"
+            :disabled="!canMergeTasks"
+            @click="mergeSelectedTasks"
+          >
+            合并任务
+          </button>
         </div>
       </section>
 
@@ -370,6 +518,7 @@
       </section>
 
       <section v-else-if="view === 'recurring-setting'" class="content form-view" @click.stop>
+        <label class="field compact"><span>所属分类</span><select v-model="recurringDraft.category" aria-label="所属分类"><option v-for="category in categories" :key="category" :value="category">{{ category }}</option></select></label>
         <label class="field"><span>任务</span><input v-model.trim="recurringDraft.title" type="text" maxlength="80" /></label>
         <label class="field compact"><span>时间范围</span><select v-model="recurringDraft.dateRangeType"><option value="long">长期</option><option value="range">指定日期</option></select></label>
         <label class="field compact"><span>开始日期</span><input v-model="recurringDraft.startDate" type="date" /></label>
@@ -383,24 +532,56 @@
 
       <section v-else-if="view === 'recurring-setting-detail'" class="content detail-view" @click.stop>
         <div class="detail-summary compact recurring-detail-summary"><span class="recurring-detail-title">{{ recurringDetail?.title }}</span><span>{{ recurringDetail?.status }}</span></div>
-        <div class="detail-section recurring-detail-section"><h2>设置信息</h2><div class="recurring-info-list"><p><span>时间范围</span><strong>{{ recurringDetail?.date_range_type === 'range' ? `${recurringDetail?.start_date} 至 ${recurringDetail?.end_date}` : '长期' }}</strong></p><p><span>重复频率</span><strong>{{ recurringFrequencyText(recurringDetail) }}</strong></p><p><span>生成时间</span><strong>{{ recurringDetail?.generate_time }}</strong></p></div></div>
+        <div class="detail-section recurring-detail-section"><h2>设置信息</h2><div class="recurring-info-list"><p><span>所属分类</span><strong>{{ recurringDetail?.owner }}</strong></p><p><span>时间范围</span><strong>{{ recurringDetail?.date_range_type === 'range' ? `${recurringDetail?.start_date} 至 ${recurringDetail?.end_date}` : '长期' }}</strong></p><p><span>重复频率</span><strong>{{ recurringFrequencyText(recurringDetail) }}</strong></p><p><span>生成时间</span><strong>{{ recurringDetail?.generate_time }}</strong></p></div></div>
         <div class="detail-section recurring-detail-section"><h2>操作日志</h2><div v-if="recurringSettingEvents.length" class="event-list"><div v-for="event in recurringSettingEvents" :key="event.id" class="event-row"><time>{{ formatTime(event.created_at) }}</time><span>{{ recurringEventText(event.event_type) }}</span></div></div><p v-else class="section-empty">暂无操作日志</p></div>
         <div class="detail-section recurring-detail-section"><h2>相关任务 <small class="recurring-completed-count">已完成 {{ recurringCompletedCount }} 次</small></h2><div v-if="recurringSettingTasks.length" class="history-list recurring-task-list"><button v-for="task in recurringSettingTasks" :key="task.id" class="history-main" type="button" @click="openTask(task)"><span>{{ task.title }}</span><small :class="recurringTaskStatusClass(task)">{{ recurringTaskStatusText(task) }}</small></button></div><p v-else class="section-empty">暂无相关任务</p></div>
       </section>
 
       <section v-else-if="view === 'detail' && selectedTask" class="content detail-view" @click.stop>
-        <div v-if="selectedTask.archived_at" class="detail-summary">
-          <strong>{{ selectedTask.title }}</strong>
-          <span class="status-chip" :class="`status-${taskStatus(selectedTask)}`"><span v-if="taskStatus(selectedTask) === 'in_progress'" class="in-progress-dot chip-dot" aria-hidden="true"></span>{{ taskStatusText(selectedTask) }}</span>
-          <span v-if="selectedTask.deadline_at">截止：{{ formatDeadline(selectedTask.deadline_at) }}</span>
-          <span v-if="selectedTask.is_urgent">紧急</span>
-          <button v-if="selectedTask.is_recurring" class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期规则</button>
-        </div>
+        <template v-if="selectedTask.archived_at">
+          <div class="detail-summary">
+            <strong>{{ selectedTask.title }}</strong>
+            <span class="status-chip" :class="`status-${taskStatus(selectedTask)}`"><span v-if="taskStatus(selectedTask) === 'in_progress'" class="in-progress-dot chip-dot" aria-hidden="true"></span>{{ taskStatusText(selectedTask) }}</span>
+            <span v-if="selectedTask.owner" class="detail-category-tag">分类 · {{ selectedTask.owner }}</span>
+            <span v-if="selectedTask.deadline_at">截止：{{ formatDeadline(selectedTask.deadline_at) }}</span>
+            <span v-if="selectedTask.is_urgent">紧急</span>
+            <button v-if="selectedTask.is_recurring" class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期规则</button>
+          </div>
+          <div class="detail-actions-row">
+            <button class="action-pill" data-icon="✎" type="button" @click="toggleArchivedEdit">
+              {{ archivedEditOpen ? '收起编辑' : '编辑' }}
+            </button>
+          </div>
+          <div v-if="archivedEditOpen" class="detail-actions detail-edit-panel">
+            <input
+              v-model.trim="archivedEditDraft.title"
+              class="task-input"
+              type="text"
+              maxlength="80"
+              placeholder="写点什么…"
+            />
+            <div class="task-type-toggles">
+              <select v-model="archivedEditDraft.category" class="category-select" aria-label="所属分类">
+                <option v-for="category in categories" :key="category" :value="category">{{ category }}</option>
+              </select>
+            </div>
+            <p class="detail-hint">归档任务仅支持修改任务名称与所属分类，保存后状态保持不变。</p>
+            <button
+              class="primary-action primary-block"
+              type="button"
+              :disabled="!archivedEditDraft.title"
+              @click="saveArchivedTaskChanges"
+            >
+              保存变更
+            </button>
+          </div>
+        </template>
         <template v-else>
           <div class="detail-summary">
             <strong>{{ selectedTask.title }}</strong>
             <div class="detail-meta-row">
               <span class="status-chip" :class="`status-${taskStatus(selectedTask)}`"><span v-if="taskStatus(selectedTask) === 'in_progress'" class="in-progress-dot chip-dot" aria-hidden="true"></span>{{ taskStatusText(selectedTask) }}</span>
+              <span v-if="selectedTask.owner" class="detail-category-tag">分类 · {{ selectedTask.owner }}</span>
               <span v-if="selectedTask.is_urgent" class="urgent-chip">紧急</span>
               <button v-if="selectedTask.is_recurring" class="recurring-tag" type="button" @click="openRecurringSettingById(selectedTask.recurring_setting_id)">周期规则</button>
             </div>
@@ -571,7 +752,7 @@
             </div>
           </div>
         </template>
-        <div v-if="!detailEditOpen" class="event-list">
+        <div v-if="!detailEditOpen && !archivedEditOpen" class="event-list">
           <h2>生命周期</h2>
           <div
             v-for="event in visibleTaskEvents"
@@ -604,7 +785,85 @@
             {{ fullLogOpen ? '收起日志' : `完整日志（+${hiddenEventCount}）` }}
           </button>
         </div>
-        <p v-if="!detailEditOpen" class="detail-hint">点击节点和日志内容可展开操作，按住节点可拖动排序</p>
+        <p v-if="!detailEditOpen && !archivedEditOpen && !selectedTask.archived_at" class="detail-hint">点击节点和日志内容可展开操作，按住节点可拖动排序</p>
+      </section>
+
+      <section v-else-if="view === 'data-management'" class="content data-management-view" @click.stop>
+        <div class="data-version-card">
+          <span class="field-label">当前数据版本</span>
+          <strong class="data-version-value">{{ dataVersionText }}</strong>
+          <span class="data-version-hint">数据最近一次变更或导入的时间</span>
+          <span v-if="dataStatsText" class="data-stats">{{ dataStatsText }}</span>
+        </div>
+
+        <div class="data-action-card">
+          <h2>导出数据</h2>
+          <p>把全部分类、任务、节点、生命周期记录，以及主题、字体、签名等界面设置导出为 JSON 备份文件。</p>
+          <button class="primary-action" type="button" :disabled="dataBusy" @click="exportData">
+            导出到文件
+          </button>
+        </div>
+
+        <div class="data-action-card">
+          <h2>导入数据</h2>
+          <p>从 JSON 备份文件恢复数据。导入时可选择完全覆盖或增量覆盖。</p>
+          <button
+            v-if="!importPreview"
+            class="primary-action"
+            type="button"
+            :disabled="dataBusy"
+            @click="chooseImportFile"
+          >
+            选择备份文件
+          </button>
+          <div v-else class="data-import-preview">
+            <div class="data-import-file">
+              <strong>{{ importPreview.fileName }}</strong>
+              <span>数据版本：{{ formatTimestamp(importPreview.dataVersion) || "未记录" }}</span>
+              <span>导出时间：{{ formatTimestamp(importPreview.exportedAt) || "未记录" }}</span>
+              <span>
+                {{ importPreview.taskCount }} 条任务 · {{ importPreview.recurringRuleCount }} 条周期规则 ·
+                {{ importPreview.categoryCount }} 个分类
+              </span>
+              <span class="data-import-prefs">
+                {{ importPreview.preferences ? "包含界面与签名设置（完全覆盖时一并恢复）" : "不含界面设置（保留本地设置）" }}
+              </span>
+            </div>
+            <p v-if="importPreviewOlder" class="data-import-warning">
+              该备份的数据版本早于本地；增量覆盖时，同 ID 任务仍会按备份内容覆盖。
+            </p>
+            <div class="data-import-actions">
+              <button
+                class="data-import-mode"
+                type="button"
+                :disabled="dataBusy"
+                @click="startImport('overwrite')"
+              >
+                <strong>完全覆盖</strong>
+                <span>清空本地全部数据，完全使用备份内容；含界面设置时一并恢复</span>
+              </button>
+              <button
+                class="data-import-mode"
+                type="button"
+                :disabled="dataBusy"
+                @click="startImport('merge')"
+              >
+                <strong>增量覆盖</strong>
+                <span>不删除本地任务；同 ID 任务按备份更新，其余新增；保留本地界面设置</span>
+              </button>
+            </div>
+            <button
+              class="text-button data-import-cancel"
+              type="button"
+              :disabled="dataBusy"
+              @click="cancelImport"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+
+        <p class="data-management-foot">备份文件只保存在本机，不会上传服务器。</p>
       </section>
 
       <AboutView v-else-if="view === 'about'" :version-label="versionLabel" @open-external="openExternal" />
@@ -644,13 +903,15 @@ import { useRecurringTaskSettings } from "./composables/useRecurringTaskSettings
 import { useTaskCreation } from "./composables/useTaskCreation.js";
 import { useTaskDetail } from "./composables/useTaskDetail.js";
 import { useTaskList } from "./composables/useTaskList.js";
+import { useTaskMerge } from "./composables/useTaskMerge.js";
 import { useCategories } from "./composables/useCategories.js";
-import { formatDeadline, formatTime } from "./lib/datetime.js";
+import { useDataManagement } from "./composables/useDataManagement.js";
+import { formatDeadline, formatTime, formatTimestamp } from "./lib/datetime.js";
 import { setErrorReporter } from "./lib/errors.js";
 import { eventText, taskStatus, taskStatusText } from "./lib/labels.js";
 
 // 版本号按 AGENTS.md 在 App.vue 内维护，改应用代码后必须同步时间。
-const versionLabel = "v1.5.0 - 2026-11-05 18:37";
+const versionLabel = "v1.5.0 - 2026-11-06 14:45";
 
 const view = ref("home");
 const menuOpen = ref(false);
@@ -683,11 +944,26 @@ const {
   changeSignature,
   changeNotePosition,
   changeAutoStart,
+  getPreferences,
+  applyPreferences,
 } = useNoteSettings({ closeMenu, notify: showNotice });
 
 // openTask 由 useTaskDetail 提供，而 useTaskList 需要它、useTaskDetail 又需要
 // useTaskList 的 refreshActiveTasks —— 用函数声明延迟解析，打断循环依赖。
 function openTaskDeferred(task) {
+  return openTask(task);
+}
+
+function reloadArchivedTasksDeferred() {
+  return loadArchivedTasks();
+}
+
+// 历史任务是跨分类列表：打开其他分类的任务前，先把当前分类切过去，
+// 详情页的接口仍按当前分类访问，行为与原来的单分类历史一致。
+function openHistoryTask(task) {
+  if (task.owner && task.owner !== currentCategory.value) {
+    adoptCategory(task.owner);
+  }
   return openTask(task);
 }
 
@@ -719,6 +995,8 @@ const {
   progressDate,
   progressTime,
   detailEditOpen,
+  archivedEditOpen,
+  archivedEditDraft,
   progressFormOpen,
   fullLogOpen,
   detailReturnView,
@@ -730,6 +1008,8 @@ const {
   resetDetailState,
   detailAction,
   toggleDetailEdit,
+  toggleArchivedEdit,
+  saveArchivedTaskChanges,
   toggleEditFutureTask,
   completeTaskEntry,
   detailCompleteEntry,
@@ -765,6 +1045,7 @@ const {
   confirmation,
   expandedHistoryTaskId,
   refreshActiveTasks,
+  reloadArchivedTasks: reloadArchivedTasksDeferred,
   openCategoryManager,
   openConfirmation,
 });
@@ -780,8 +1061,10 @@ const {
   openCategoryForm,
   closeCategoryForm,
   switchCategory,
+  adoptCategory,
   startEditCategory,
   cancelEditCategory,
+  moveCategory,
   saveCategoryName,
   deleteCategory,
   removeCategory,
@@ -829,18 +1112,33 @@ const {
   expandedHistoryTaskId,
   openConfirmation,
   refreshActiveTasks,
+  switchCategory,
   draft,
   openCategoryManager,
 });
 
 const {
   archivedTasks,
+  filteredArchivedTasks,
+  historyCategory,
+  historyCategoryOptions,
+  historyFilter,
+  historySearch,
+  historySelectionMode,
+  selectedHistoryIds,
+  allFilteredHistorySelected,
+  clearHistoryFilters,
   openHistory,
+  toggleHistorySelectionMode,
   toggleHistoryActions,
+  toggleHistorySelection,
+  toggleSelectAllHistory,
+  isHistorySelected,
   resetHistoryState,
   historyAction,
   canUndoTask,
   deleteArchivedTask,
+  batchDeleteHistoryTasks,
   loadArchivedTasks,
 } = useHistory({
   currentCategory,
@@ -851,13 +1149,69 @@ const {
   expandedHistoryTaskId,
   openConfirmation,
   refreshActiveTasks,
+  categories,
+});
+
+const {
+  mergeSelectedIds,
+  mergeTitle,
+  mergeBusy,
+  mergeableTasks,
+  allMergeTasksSelected,
+  canMergeTasks,
+  openMergeTasks,
+  isMergeTaskSelected,
+  toggleMergeTask,
+  toggleSelectAllMergeTasks,
+  mergeSelectedTasks,
+} = useTaskMerge({
+  currentCategory,
+  view,
+  menuOpen,
+  notify: showNotice,
+  openConfirmation,
+  activeTasks,
+  refreshActiveTasks,
   openCategoryManager,
+  resetSessionState,
+});
+
+const {
+  dataOverview,
+  importPreview,
+  dataBusy,
+  openDataManagement,
+  exportData,
+  chooseImportFile,
+  cancelImport,
+  startImport,
+} = useDataManagement({
+  view,
+  menuOpen,
+  notify: showNotice,
+  openConfirmation,
+  categories,
+  currentCategory,
+  refreshActiveTasks,
+  resetSessionState,
+  getPreferences: () => ({
+    ...getPreferences(),
+    currentCategory: currentCategory.value,
+  }),
+  applyPreferences,
 });
 
 const weekdayOptions = [
   { label: "一", value: 0 }, { label: "二", value: 1 }, { label: "三", value: 2 },
   { label: "四", value: 3 }, { label: "五", value: 4 }, { label: "六", value: 5 }, { label: "日", value: 6 },
 ];
+
+const historyFilterOptions = [
+  { label: "全部", value: "all" },
+  { label: "普通任务", value: "normal" },
+  { label: "周期任务", value: "recurring" },
+];
+
 let recurringRefreshTimer = null;
 
 const viewTitle = computed(() => {
@@ -870,9 +1224,33 @@ const viewTitle = computed(() => {
     "recurring-setting": "周期设置",
     "recurring-setting-detail": "规则详情",
     detail: "",
+    "merge-tasks": "合并任务",
+    "data-management": "数据管理",
     about: "产品简介",
   };
   return titles[view.value] || "";
+});
+
+const dataVersionText = computed(() => {
+  const overview = dataOverview.value;
+  if (!overview) return "读取中…";
+  return overview.dataVersion ? formatTimestamp(overview.dataVersion) : "暂无数据变更";
+});
+
+const dataStatsText = computed(() => {
+  const overview = dataOverview.value;
+  if (!overview) return "";
+  return `共 ${overview.taskCount} 条任务 · ${overview.archivedTaskCount} 条历史任务 · ${overview.recurringRuleCount} 条周期规则`;
+});
+
+// 备份版本早于本地时给一句提醒；增量覆盖仍以备份为准。
+const importPreviewOlder = computed(() => {
+  const previewVersion = importPreview.value?.dataVersion;
+  const localVersion = dataOverview.value?.dataVersion;
+  if (!previewVersion || !localVersion) return false;
+  const previewTime = Date.parse(previewVersion);
+  const localTime = Date.parse(localVersion);
+  return Number.isFinite(previewTime) && Number.isFinite(localTime) && previewTime < localTime;
 });
 
 // 一个分类都没有时，"返回"应当直接退出而不是停在空的分类管理页。
@@ -886,7 +1264,7 @@ const backButtonLabel = computed(() =>
 
 // 生命周期默认只展开：任务创建、所有进度记录、以及“仍然有效”的最后一次完成。
 // 已撤销的完成、挂起/激活/归档、字段修改与节点类日志都折叠在“完整日志（+N）”里。
-const CORE_LIFECYCLE_EVENT_TYPES = new Set(["created", "progress_updated"]);
+const CORE_LIFECYCLE_EVENT_TYPES = new Set(["created", "progress_updated", "merged"]);
 
 // 逐条遍历（已按时间升序）：完成后再撤销会作废上一个完成记录，最终剩下的才是当前有效的完成。
 const effectiveCompletionEventId = computed(() => {

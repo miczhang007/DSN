@@ -6,6 +6,7 @@ import { formatTime } from "../src/lib/datetime.js";
 
 const recurringSettingFixture = {
   id: "setting-1",
+  owner: "测试分类",
   title: "每日运动",
   status: "已作废",
   date_range_type: "long",
@@ -37,14 +38,87 @@ const taskFixture = {
   status: "pending",
 };
 
+const dataOverviewFixture = {
+  dataVersion: "2026-11-06T02:30:00+00:00",
+  taskCount: 2,
+  archivedTaskCount: 1,
+  recurringRuleCount: 1,
+};
+
+const importPreviewFixture = {
+  path: "C:\\Users\\test\\Desktop\\桌面便签数据备份.json",
+  fileName: "桌面便签数据备份.json",
+  appVersion: "1.5.0",
+  exportedAt: "2026-11-06T02:00:00+00:00",
+  dataVersion: "2026-11-06T01:50:00+00:00",
+  taskCount: 3,
+  archivedTaskCount: 1,
+  recurringRuleCount: 1,
+  categoryCount: 2,
+  categories: ["导入分类", "测试分类"],
+  preferences: {
+    noteSize: "large",
+    noteTheme: "blue",
+    noteFont: "xingshu",
+    noteSignature: "导入签名",
+    notePosition: "center",
+    currentCategory: "备份分类",
+  },
+};
+
+const archivedTaskFixture = {
+  id: "archived-1",
+  owner: "测试分类",
+  title: "整理旧资料",
+  is_recurring: false,
+  completed_at: "2026-08-20T08:00:00Z",
+  archived_at: "2026-08-21T08:00:00Z",
+  occurrence_date: null,
+  recurring_setting_id: null,
+  status: "completed",
+};
+
+const archivedRecurringFixture = {
+  ...archivedTaskFixture,
+  id: "archived-recurring",
+  title: "周期归档任务",
+  is_recurring: true,
+  completed_at: null,
+  occurrence_date: "2026-08-20",
+  recurring_setting_id: "setting-1",
+  status: "uncompleted",
+};
+
 const defaultInvoke = async (command) => {
   if (command === "list_active_tasks") return invokeMock.activeTasks || [];
-  if (command === "list_archived_tasks") return [];
+  if (command === "list_archived_tasks") return invokeMock.archivedTasks || [];
+  if (command === "list_all_archived_tasks") return invokeMock.archivedTasks || [];
   if (command === "get_task_events" || command === "list_milestones") return [];
   if (command === "list_recurring_task_settings") return [recurringSettingFixture];
   if (command === "list_recurring_setting_tasks" || command === "list_recurring_setting_events") return [];
   if (command === "get_task") return taskFixture;
   if (command === "is_auto_start_enabled") return false;
+  if (command === "get_data_overview") return invokeMock.dataOverview || dataOverviewFixture;
+  if (command === "export_data") {
+    return invokeMock.exportPath || "C:\\Users\\test\\Desktop\\桌面便签数据备份.json";
+  }
+  if (command === "inspect_import_file") return invokeMock.importPreview || null;
+  if (command === "import_data") {
+    return invokeMock.importResult || {
+      mode: "merge",
+      dataVersion: "2026-11-06T03:00:00+00:00",
+      addedTasks: 1,
+      updatedTasks: 0,
+      keptLocalTasks: 0,
+      categories: [],
+    };
+  }
+  if (command === "merge_tasks") {
+    return invokeMock.mergeResult || { ...taskFixture, id: "merged-task", title: "合并后的任务" };
+  }
+  if (command === "update_archived_task") {
+    return invokeMock.updatedArchivedTask || archivedTaskFixture;
+  }
   return null;
 };
 const invokeMock = vi.fn(defaultInvoke);
@@ -65,11 +139,26 @@ async function openTaskRow(wrapper, text) {
   await wrapper.vm.$nextTick();
 }
 
+async function openDataManagement(wrapper) {
+  await wrapper.find(".menu-button").trigger("click");
+  await wrapper.vm.$nextTick();
+  await wrapper.findAll("button").find((button) => button.text() === "数据管理").trigger("click");
+  await wrapper.vm.$nextTick();
+  await flushApp();
+}
+
 describe("桌面便签核心交互", () => {
   beforeEach(() => {
     invokeMock.mockClear();
     invokeMock.mockImplementation(defaultInvoke);
     invokeMock.activeTasks = [];
+    delete invokeMock.archivedTasks;
+    delete invokeMock.dataOverview;
+    delete invokeMock.exportPath;
+    delete invokeMock.importPreview;
+    delete invokeMock.importResult;
+    delete invokeMock.mergeResult;
+    delete invokeMock.updatedArchivedTask;
     localStorage.clear();
   });
 
@@ -495,7 +584,7 @@ describe("桌面便签核心交互", () => {
     const archivedTask = { ...taskFixture, id: "t1", title: "旧任务", status: "completed", completed_at: "2026-08-29T08:00:00Z", archived_at: "2026-08-30T08:00:00Z" };
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_active_tasks") return [];
-      if (command === "list_archived_tasks") return [archivedTask];
+      if (command === "list_all_archived_tasks") return [archivedTask];
       if (command === "get_task_events" || command === "list_milestones") return [];
       if (command === "is_auto_start_enabled") return false;
       return null;
@@ -1188,7 +1277,479 @@ describe("桌面便签核心交互", () => {
     expect(wrapper.find(".about-view").exists()).toBe(true);
     expect(wrapper.find(".about-version").text()).toMatch(/^v\d+\.\d+\.\d+$/);
     expect(wrapper.find(".about-updated").text()).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
-    expect(wrapper.findAll(".about-release-list li").length).toBe(4);
+    expect(wrapper.findAll(".about-release-list li").length).toBe(6);
+    // 版本、更新时间与更新内容都位于信息列表中，不再单独成块。
+    expect(wrapper.findAll(".about-hero .about-version").length).toBe(0);
+    expect(wrapper.findAll(".about-release").length).toBe(0);
+    const aboutListText = wrapper.find(".about-list").text();
+    expect(aboutListText).toContain("版本");
+    expect(aboutListText).toContain("更新时间");
+    expect(aboutListText).toContain("更新内容");
+    expect(wrapper.find(".about-foot").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("MIT 开源 · 数据仅存本机");
+  });
+
+  it("菜单可进入数据管理并展示数据版本与统计", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类"]));
+    localStorage.setItem("current-category", "测试分类");
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await openDataManagement(wrapper);
+
+    expect(wrapper.find(".data-management-view").exists()).toBe(true);
+    expect(wrapper.find(".data-version-value").text()).toContain("2026");
+    expect(wrapper.find(".data-stats").text()).toContain("2 条任务");
+    expect(invokeMock).toHaveBeenCalledWith("get_data_overview");
+  });
+
+  it("数据管理可导出当前分类与任务数据", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类", "家人"]));
+    localStorage.setItem("current-category", "测试分类");
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await openDataManagement(wrapper);
+    await wrapper.findAll("button").find((button) => button.text() === "导出到文件").trigger("click");
+    await flushApp();
+
+    expect(invokeMock).toHaveBeenCalledWith("export_data", {
+      categories: ["测试分类", "家人"],
+      preferences: {
+        noteSize: "medium",
+        noteTheme: "yellow",
+        noteFont: "xikai",
+        noteSignature: "桌面便签",
+        notePosition: "top-right",
+        currentCategory: "测试分类",
+      },
+    });
+  });
+
+  it("增量导入保留本地分类并合并备份任务", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类"]));
+    localStorage.setItem("current-category", "测试分类");
+    localStorage.setItem("note-theme", "pink");
+    invokeMock.importPreview = importPreviewFixture;
+    invokeMock.importResult = {
+      mode: "merge",
+      importedAt: "2026-11-06T03:00:00+00:00",
+      dataVersion: "2026-11-06T03:00:00+00:00",
+      addedTasks: 1,
+      updatedTasks: 1,
+      keptLocalTasks: 2,
+      categories: ["导入分类", "测试分类"],
+      preferences: importPreviewFixture.preferences,
+    };
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await openDataManagement(wrapper);
+    await wrapper.findAll("button").find((button) => button.text() === "选择备份文件").trigger("click");
+    await flushApp();
+    expect(wrapper.find(".data-import-file").text()).toContain("桌面便签数据备份.json");
+
+    await wrapper.findAll(".data-import-mode").find((button) => button.text().includes("增量覆盖")).trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(document.body.textContent).toContain("增量覆盖导入");
+    document.querySelector(".confirm-actions .confirm-button").click();
+    await flushApp();
+    await flushApp();
+
+    expect(invokeMock).toHaveBeenCalledWith("import_data", {
+      path: importPreviewFixture.path,
+      mode: "merge",
+    });
+    expect(JSON.parse(localStorage.getItem("categories"))).toEqual(["测试分类", "导入分类"]);
+    expect(localStorage.getItem("note-theme")).toBe("pink");
+    expect(wrapper.find(".data-management-view").exists()).toBe(false);
+  });
+
+  it("完全覆盖导入会用备份分类替换本地分类", async () => {
+    localStorage.setItem("categories", JSON.stringify(["本地分类"]));
+    localStorage.setItem("current-category", "本地分类");
+    invokeMock.importPreview = importPreviewFixture;
+    invokeMock.importResult = {
+      mode: "overwrite",
+      importedAt: "2026-11-06T03:00:00+00:00",
+      dataVersion: "2026-11-06T03:00:00+00:00",
+      addedTasks: 2,
+      updatedTasks: 0,
+      keptLocalTasks: 0,
+      categories: ["备份分类"],
+      preferences: {
+        noteSize: "large",
+        noteTheme: "blue",
+        noteFont: "xingshu",
+        noteSignature: "导入签名",
+        notePosition: "center",
+        currentCategory: "备份分类",
+      },
+    };
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await openDataManagement(wrapper);
+    await wrapper.findAll("button").find((button) => button.text() === "选择备份文件").trigger("click");
+    await flushApp();
+    await wrapper.findAll(".data-import-mode").find((button) => button.text().includes("完全覆盖")).trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(document.body.textContent).toContain("完全覆盖导入");
+    document.querySelector(".confirm-actions .confirm-button").click();
+    await flushApp();
+    await flushApp();
+
+    expect(invokeMock).toHaveBeenCalledWith("import_data", {
+      path: importPreviewFixture.path,
+      mode: "overwrite",
+    });
+    expect(JSON.parse(localStorage.getItem("categories"))).toEqual(["备份分类"]);
+    expect(localStorage.getItem("current-category")).toBe("备份分类");
+    expect(localStorage.getItem("note-size")).toBe("large");
+    expect(localStorage.getItem("note-theme")).toBe("blue");
+    expect(localStorage.getItem("note-font")).toBe("xingshu");
+    expect(localStorage.getItem("note-signature")).toBe("导入签名");
+    expect(localStorage.getItem("note-position")).toBe("center");
+    expect(wrapper.find(".data-management-view").exists()).toBe(false);
+  });
+
+  it("历史任务支持按全部/普通/周期筛选与任务名检索", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类"]));
+    localStorage.setItem("current-category", "测试分类");
+    invokeMock.archivedTasks = [
+      archivedTaskFixture,
+      archivedRecurringFixture,
+      { ...archivedTaskFixture, id: "archived-2", title: "普通第二条" },
+    ];
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "历史任务").trigger("click");
+    await flushApp();
+
+    const titles = () => wrapper.findAll(".history-main span").map((item) => item.text());
+    expect(titles()).toEqual(["整理旧资料", "周期归档任务", "普通第二条"]);
+
+    await wrapper.findAll(".history-filter button").find((button) => button.text() === "周期任务").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(titles()).toEqual(["周期归档任务"]);
+
+    await wrapper.findAll(".history-filter button").find((button) => button.text() === "普通任务").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(titles()).toEqual(["整理旧资料", "普通第二条"]);
+
+    await wrapper.find(".history-search").setValue("整理");
+    await wrapper.vm.$nextTick();
+    expect(titles()).toEqual(["整理旧资料"]);
+
+    await wrapper.find(".history-search").setValue("不存在");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".empty-state").text()).toContain("没有匹配的历史任务");
+
+    await wrapper.find(".empty-state .text-button").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(titles()).toEqual(["整理旧资料", "周期归档任务", "普通第二条"]);
+  });
+
+  it("合并任务支持勾选多个未归档任务、编辑名称并调用合并接口", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类"]));
+    localStorage.setItem("current-category", "测试分类");
+    const mergeTaskA = { ...taskFixture, id: "merge-a", title: "任务甲", is_urgent: true };
+    const mergeTaskB = {
+      ...taskFixture,
+      id: "merge-b",
+      title: "任务乙",
+      completed_at: "2026-08-20T08:00:00Z",
+      status: "completed",
+    };
+    const mergeTaskRecurring = {
+      ...taskFixture,
+      id: "merge-r",
+      title: "不应参与合并的周期任务",
+      is_recurring: true,
+      recurring_setting_id: "setting-1",
+      occurrence_date: "2026-08-24",
+    };
+    invokeMock.activeTasks = [mergeTaskA, mergeTaskB, mergeTaskRecurring];
+    invokeMock.mergeResult = {
+      ...taskFixture,
+      id: "merged-1",
+      title: "合并后的任务",
+      is_urgent: true,
+      status: "pending",
+    };
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "合并任务").trigger("click");
+    await flushApp();
+
+    expect(wrapper.find(".merge-tasks-view").exists()).toBe(true);
+    const rows = wrapper.findAll(".merge-task-row");
+    expect(rows.length).toBe(2);
+    expect(rows.map((row) => row.text())).not.toContain("不应参与合并的周期任务");
+
+    const mergeButton = () =>
+      wrapper.findAll("button").find((button) => button.text() === "合并任务");
+    expect(mergeButton().attributes("disabled")).toBeDefined();
+
+    await wrapper.findAll("button").find((button) => button.text() === "全选").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".merge-selection-meta").text()).toContain("已选 2 个任务");
+    const titleInput = wrapper.find(".merge-editor input");
+    expect(titleInput.element.value).toBe("任务甲、任务乙");
+
+    await titleInput.setValue("合并后的任务");
+    await wrapper.vm.$nextTick();
+    await mergeButton().trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(document.body.textContent).toContain("合并任务");
+    document.querySelector(".confirm-actions .confirm-button").click();
+    await flushApp();
+    await flushApp();
+
+    expect(invokeMock).toHaveBeenCalledWith("merge_tasks", {
+      owner: "测试分类",
+      taskIds: ["merge-a", "merge-b"],
+      title: "合并后的任务",
+    });
+    expect(wrapper.find(".merge-tasks-view").exists()).toBe(false);
+  });
+
+  it("分类管理支持上下移动分类并持久化顺序", async () => {
+    localStorage.setItem("categories", JSON.stringify(["甲", "乙", "丙"]));
+    localStorage.setItem("current-category", "甲");
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "分类管理").trigger("click");
+    await wrapper.vm.$nextTick();
+    await flushApp();
+
+    const categoryNames = () => wrapper.findAll(".category-main").map((item) => item.text());
+    expect(categoryNames()).toEqual(["甲", "乙", "丙"]);
+    expect(
+      wrapper.findAll(".category-row")[0].find('[aria-label="上移分类"]').attributes("disabled"),
+    ).toBeDefined();
+    expect(
+      wrapper.findAll(".category-row")[2].find('[aria-label="下移分类"]').attributes("disabled"),
+    ).toBeDefined();
+
+    await wrapper.findAll(".category-row")[0].find('[aria-label="下移分类"]').trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(JSON.parse(localStorage.getItem("categories"))).toEqual(["乙", "甲", "丙"]);
+    expect(categoryNames()).toEqual(["乙", "甲", "丙"]);
+    // 当前分类不随排序改变
+    expect(localStorage.getItem("current-category")).toBe("甲");
+
+    await wrapper.findAll(".category-row")[2].find('[aria-label="上移分类"]').trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(JSON.parse(localStorage.getItem("categories"))).toEqual(["乙", "丙", "甲"]);
+    expect(categoryNames()).toEqual(["乙", "丙", "甲"]);
+  });
+
+  it("任务详情展示所属分类标签", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类"]));
+    localStorage.setItem("current-category", "测试分类");
+    invokeMock.activeTasks = [taskFixture];
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".task-main").trigger("click");
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    expect(wrapper.find(".detail-category-tag").text()).toBe("分类 · 测试分类");
+  });
+
+  it("已归档任务支持改名且保存后状态保持不变", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类"]));
+    localStorage.setItem("current-category", "测试分类");
+    invokeMock.archivedTasks = [archivedTaskFixture];
+    invokeMock.updatedArchivedTask = {
+      ...archivedTaskFixture,
+      title: "改名后的历史任务",
+    };
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "历史任务").trigger("click");
+    await flushApp();
+    await wrapper.find(".history-main").trigger("click");
+    await flushApp();
+    expect(wrapper.find(".detail-category-tag").text()).toBe("分类 · 测试分类");
+    expect(wrapper.find(".detail-summary .status-chip").text()).toContain("已完成");
+
+    await wrapper.find(".detail-actions-row button").trigger("click");
+    await wrapper.vm.$nextTick();
+    const titleInput = wrapper.find(".detail-edit-panel .task-input");
+    await titleInput.setValue("改名后的历史任务");
+    await wrapper.findAll("button").find((button) => button.text() === "保存变更").trigger("click");
+    await flushApp();
+    await flushApp();
+
+    expect(invokeMock).toHaveBeenCalledWith("update_archived_task", {
+      owner: "测试分类",
+      taskId: "archived-1",
+      title: "改名后的历史任务",
+      newOwner: null,
+    });
+    expect(wrapper.find(".detail-summary strong").text()).toBe("改名后的历史任务");
+    expect(wrapper.find(".detail-summary .status-chip").text()).toContain("已完成");
+  });
+
+  it("已归档任务改分类后回到历史列表", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类", "归档分类"]));
+    localStorage.setItem("current-category", "测试分类");
+    invokeMock.archivedTasks = [archivedTaskFixture];
+    invokeMock.updatedArchivedTask = {
+      ...archivedTaskFixture,
+      owner: "归档分类",
+    };
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "历史任务").trigger("click");
+    await flushApp();
+    await wrapper.find(".history-main").trigger("click");
+    await flushApp();
+
+    await wrapper.find(".detail-actions-row button").trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper.find(".detail-edit-panel select").setValue("归档分类");
+    await wrapper.findAll("button").find((button) => button.text() === "保存变更").trigger("click");
+    await flushApp();
+    await flushApp();
+
+    expect(invokeMock).toHaveBeenCalledWith("update_archived_task", {
+      owner: "测试分类",
+      taskId: "archived-1",
+      title: "整理旧资料",
+      newOwner: "归档分类",
+    });
+    expect(wrapper.find(".history-view").exists()).toBe(true);
+  });
+
+  it("历史任务支持分类筛选与批量删除", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类", "归档分类"]));
+    localStorage.setItem("current-category", "测试分类");
+    invokeMock.archivedTasks = [
+      { ...archivedTaskFixture, id: "history-a", title: "工作归档", owner: "测试分类" },
+      { ...archivedTaskFixture, id: "history-b", title: "学习归档", owner: "归档分类" },
+    ];
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "历史任务").trigger("click");
+    await flushApp();
+
+    const titles = () => wrapper.findAll(".history-main span").map((item) => item.text());
+    expect(titles()).toEqual(["工作归档", "学习归档"]);
+
+    await wrapper.find(".history-category-select").setValue("归档分类");
+    await wrapper.vm.$nextTick();
+    expect(titles()).toEqual(["学习归档"]);
+    expect(wrapper.find(".history-main small").text()).toContain("归档分类");
+
+    await wrapper.find(".history-category-select").setValue("all");
+    await wrapper.vm.$nextTick();
+    // 多选与批量删除默认隐藏，点击“选择”后才出现。
+    expect(wrapper.findAll(".history-select").length).toBe(0);
+    expect(wrapper.findAll("button").some((button) => button.text() === "批量删除")).toBe(false);
+    await wrapper.find(".history-select-toggle").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findAll(".history-select").length).toBe(2);
+    expect(wrapper.findAll("button").some((button) => button.text() === "批量删除")).toBe(true);
+    await wrapper.find(".history-select-toggle").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findAll(".history-select").length).toBe(0);
+
+    await wrapper.find(".history-select-toggle").trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper.findAll("button").find((button) => button.text() === "全选").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".history-selected-count").text()).toContain("已选 2 项");
+
+    await wrapper.findAll("button").find((button) => button.text() === "批量删除").trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(document.body.textContent).toContain("批量删除历史任务");
+    document.querySelector(".confirm-actions .confirm-button").click();
+    await flushApp();
+    await flushApp();
+
+    expect(invokeMock).toHaveBeenCalledWith("delete_archived_tasks", {
+      taskIds: ["history-a", "history-b"],
+    });
+    expect(wrapper.findAll(".history-select").length).toBe(0);
+  });
+
+  it("新建周期任务规则可选择所属分类", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类", "学习分类"]));
+    localStorage.setItem("current-category", "测试分类");
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "周期任务规则").trigger("click");
+    await flushApp();
+    await wrapper.findAll("button").find((button) => button.text().includes("新建周期任务")).trigger("click");
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('.form-view select[aria-label="所属分类"]').setValue("学习分类");
+    await wrapper.find('.form-view input[maxlength="80"]').setValue("每日学习");
+    await wrapper.findAll("button").find((button) => button.text() === "保存设置").trigger("click");
+    await flushApp();
+    await flushApp();
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "create_recurring_task_setting",
+      expect.objectContaining({ owner: "学习分类", title: "每日学习" }),
+    );
+    expect(localStorage.getItem("current-category")).toBe("学习分类");
+  });
+
+  it("编辑周期任务规则可修改所属分类", async () => {
+    localStorage.setItem("categories", JSON.stringify(["测试分类", "学习分类"]));
+    localStorage.setItem("current-category", "测试分类");
+    const activeSetting = { ...recurringSettingFixture, status: "生效中" };
+    invokeMock.mockImplementation(async (command) => {
+      if (command === "list_active_tasks") return [];
+      if (command === "list_recurring_task_settings") return [activeSetting];
+      if (command === "list_recurring_setting_tasks" || command === "list_recurring_setting_events") return [];
+      if (command === "update_recurring_task_setting") {
+        return { ...activeSetting, owner: "学习分类" };
+      }
+      if (command === "is_auto_start_enabled") return false;
+      return null;
+    });
+    const wrapper = mountApp();
+    await wrapper.vm.$nextTick();
+    await flushApp();
+    await wrapper.find(".menu-button").trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "周期任务规则").trigger("click");
+    await flushApp();
+    await wrapper.find(".rule-action").trigger("click");
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('.form-view select[aria-label="所属分类"]').setValue("学习分类");
+    await wrapper.findAll("button").find((button) => button.text() === "保存设置").trigger("click");
+    await flushApp();
+    await flushApp();
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "update_recurring_task_setting",
+      expect.objectContaining({
+        owner: "测试分类",
+        newOwner: "学习分类",
+        settingId: "setting-1",
+      }),
+    );
+    expect(localStorage.getItem("current-category")).toBe("学习分类");
   });
 
   it("老版本的“用户”数据会自动迁移为分类", async () => {

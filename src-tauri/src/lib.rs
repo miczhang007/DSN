@@ -1,11 +1,15 @@
 use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State};
+
+mod data_transfer;
+mod task_merge;
 
 const AUTO_START_REG_PATH: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 const AUTO_START_VALUE_NAME: &str = "StickyNote";
@@ -212,6 +216,8 @@ pub fn run() {
             let db_path = app_data_dir.join("desktop-sticky-note.sqlite3");
             let conn = open_database(&db_path).map_err(|err| format!("无法打开数据库：{err}"))?;
             migrate(&conn).map_err(|err| format!("应用初始化失败：{err}"))?;
+            initialize_progress_boost(&conn)
+                .map_err(|err| format!("应用初始化失败：{err}"))?;
             app.manage(DbState {
                 conn: Mutex::new(conn),
             });
@@ -220,13 +226,16 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_active_tasks,
             list_archived_tasks,
+            list_all_archived_tasks,
             get_task,
             get_task_events,
             create_task,
             update_task,
+            update_archived_task,
             add_task_progress,
             delete_task_event,
             delete_task,
+            delete_archived_tasks,
             archive_task,
             suspend_task,
             activate_task,
@@ -258,7 +267,12 @@ pub fn run() {
             is_auto_start_enabled,
             set_auto_start_enabled,
             open_external_link,
-            exit_app
+            exit_app,
+            data_transfer::get_data_overview,
+            data_transfer::export_data,
+            data_transfer::inspect_import_file,
+            data_transfer::import_data,
+            task_merge::merge_tasks
         ])
         .run(tauri::generate_context!());
 
@@ -423,6 +437,12 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             event_type TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
+
+        -- 应用级元数据：记录最近一次导入时间等无法从业务行直接推导的信息。
+        CREATE TABLE IF NOT EXISTS app_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         ",
     )?;
 
@@ -436,6 +456,16 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         })?;
 
     conn.execute_batch("ALTER TABLE tasks ADD COLUMN sort_order INTEGER;")
+        .or_else(|err| {
+            if is_duplicate_column_error(&err) {
+                Ok(())
+            } else {
+                Err(err)
+            }
+        })?;
+
+    // 进行中任务临时置顶前的手工排序位置：恢复时写回，不改动其他任务的手工顺序。
+    conn.execute_batch("ALTER TABLE tasks ADD COLUMN sort_order_before_progress INTEGER;")
         .or_else(|err| {
             if is_duplicate_column_error(&err) {
                 Ok(())
@@ -515,6 +545,49 @@ fn migrate_legacy_deadlines(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// 升级到“进行中临时置顶”规则后，对已存在的进行中任务补一次置顶初始化。
+/// 只执行一次，避免用户之后手工拖拽覆盖置顶状态时又被开机重置。
+fn initialize_progress_boost(conn: &Connection) -> Result<(), String> {
+    let initialized: Option<String> = conn
+        .query_row(
+            "SELECT value FROM app_meta WHERE key = 'progress_boost_initialized'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    if initialized.is_some() {
+        return Ok(());
+    }
+
+    let tasks: Vec<(String, String)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, owner FROM tasks
+                 WHERE archived_at IS NULL AND deleted_at IS NULL",
+            )
+            .map_err(|err| err.to_string())?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|err| err.to_string())?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|err| err.to_string())?
+    };
+    for (task_id, owner) in tasks {
+        let task = query_task(conn, &owner, &task_id)?;
+        if task.status == "in_progress" {
+            boost_task_progress_order(conn, &owner, &task_id)?;
+        }
+    }
+    conn.execute(
+        "INSERT INTO app_meta (key, value) VALUES ('progress_boost_initialized', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![now_string()],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 // 查询前会做定时维护：补齐当天周期任务、归档过期实例、记录到点开始的执行事件。
 // 维护逻辑幂等（见 recurring_refresh_is_idempotent_across_repeated_calls），
@@ -580,6 +653,51 @@ fn list_archived_tasks(state: State<DbState>, owner: String) -> Result<Vec<Task>
         ",
         &owner,
     )
+}
+
+/// 历史任务跨分类视图：先对每个出现过的分类做一次定时维护，再返回全部分类的归档任务。
+#[tauri::command]
+fn list_all_archived_tasks(state: State<DbState>) -> Result<Vec<Task>, String> {
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    for owner in distinct_data_owners(&conn)? {
+        refresh_recurring_tasks(&conn, &owner)?;
+        auto_archive_completed_tasks(&conn, &owner)?;
+    }
+    query_all_archived_tasks(&conn)
+}
+
+fn distinct_data_owners(conn: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT owner FROM tasks
+             UNION
+             SELECT owner FROM recurring_task_settings",
+        )
+        .map_err(|err| err.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|err| err.to_string())?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|err| err.to_string())
+}
+
+fn query_all_archived_tasks(conn: &Connection) -> Result<Vec<Task>, String> {
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT t.id, t.owner, t.title, t.deadline_at, t.is_urgent, t.created_at, t.updated_at, t.completed_at, t.archived_at,
+              NULL, NULL, t.recurring_setting_id, t.occurrence_date,
+              CASE WHEN t.recurring_setting_id IS NULL THEN 0 ELSE 1 END,
+              t.suspended_at, t.start_at, t.deleted_at, t.started_at, t.reactivated_at
+            FROM tasks t
+            WHERE t.archived_at IS NOT NULL AND t.deleted_at IS NULL
+            ORDER BY t.archived_at DESC
+            ",
+        )
+        .map_err(|err| err.to_string())?;
+    let rows = stmt.query_map([], map_task).map_err(|err| err.to_string())?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|err| err.to_string())
 }
 
 #[tauri::command]
@@ -665,10 +783,20 @@ fn create_task(
     let now = now_string();
     let id = uuid::Uuid::new_v4().to_string();
     // 新任务默认排到当前任务第一位：现有已排序的活动任务整体后移一位。
+    // 进行中任务的临时负数排序（置顶占位）不参与后移，避免破坏进入前位置。
     conn.execute(
         "UPDATE tasks SET sort_order = sort_order + 1, updated_at = ?1
-         WHERE owner = ?2 AND archived_at IS NULL AND deleted_at IS NULL AND sort_order IS NOT NULL",
+         WHERE owner = ?2 AND archived_at IS NULL AND deleted_at IS NULL
+           AND sort_order IS NOT NULL AND sort_order >= 0",
         params![now, owner],
+    )
+    .map_err(|err| err.to_string())?;
+    // 新任务插到 0 会让原手工排序整体后移；进行中任务的“进入前位置”也同步后移，
+    // 否则它撤出后会回到错误的位置。
+    conn.execute(
+        "UPDATE tasks SET sort_order_before_progress = sort_order_before_progress + 1
+         WHERE owner = ?1 AND sort_order < 0 AND sort_order_before_progress IS NOT NULL",
+        params![owner],
     )
     .map_err(|err| err.to_string())?;
     conn.execute(
@@ -809,7 +937,17 @@ fn update_task(
         }
         None => owner,
     };
-    query_task(&conn, &final_owner, &task_id)
+
+    // 修改开始执行时间可能让任务进入/离开进行中；只在真正跨越状态时调整临时置顶，
+    // 避免普通编辑把用户手工拖拽的覆盖结果重新置顶。
+    let previous_status = task.status.clone();
+    let updated = query_task(&conn, &final_owner, &task_id)?;
+    if updated.status == "in_progress" && previous_status != "in_progress" {
+        boost_task_progress_order(&conn, &final_owner, &task_id)?;
+    } else if previous_status == "in_progress" && updated.status != "in_progress" {
+        restore_task_progress_order(&conn, &final_owner, &task_id)?;
+    }
+    Ok(updated)
 }
 
 /// 把任务迁移到另一个分类：只改 tasks.owner，任务的事件/节点等数据随 task_id 一起保留。
@@ -840,6 +978,74 @@ fn change_task_owner(
         Some(new_owner),
     )?;
     Ok(())
+}
+
+/// 已归档任务的受限编辑：只允许修改任务名称与所属分类，
+/// 完成/归档等状态字段保持原样，保存后不改变历史状态。
+#[tauri::command]
+fn update_archived_task(
+    state: State<DbState>,
+    owner: String,
+    task_id: String,
+    title: String,
+    new_owner: Option<String>,
+) -> Result<Task, String> {
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    apply_update_archived_task(
+        &conn,
+        &owner,
+        &task_id,
+        &title,
+        new_owner.as_deref(),
+    )
+}
+
+fn apply_update_archived_task(
+    conn: &Connection,
+    owner: &str,
+    task_id: &str,
+    title: &str,
+    new_owner: Option<&str>,
+) -> Result<Task, String> {
+    let owner = normalize_owner(owner)?;
+    let trimmed_title = title.trim();
+    if trimmed_title.is_empty() {
+        return Err("任务标题不能为空".to_string());
+    }
+    if trimmed_title.chars().count() > 80 {
+        return Err("任务标题不能超过 80 个字符".to_string());
+    }
+
+    let task = query_task(conn, &owner, task_id)?;
+    if task.archived_at.is_none() {
+        return Err("只有已归档任务可以使用该编辑操作".to_string());
+    }
+
+    if task.title != trimmed_title {
+        insert_event(
+            conn,
+            task_id,
+            "title_changed",
+            Some(&task.title),
+            Some(trimmed_title),
+        )?;
+    }
+    conn.execute(
+        "UPDATE tasks SET title = ?1, updated_at = ?2 WHERE id = ?3 AND owner = ?4",
+        params![trimmed_title, now_string(), task_id, owner],
+    )
+    .map_err(|err| err.to_string())?;
+
+    // 只迁移归属分类，不触碰 completed_at / archived_at 等状态字段。
+    let final_owner = match new_owner.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(target) => {
+            let target = normalize_owner(target)?;
+            change_task_owner(conn, &owner, task_id, &target)?;
+            target
+        }
+        None => owner,
+    };
+    query_task(conn, &final_owner, task_id)
 }
 
 #[tauri::command]
@@ -932,6 +1138,7 @@ fn complete_task(
                 params![completed, now, task_id, owner],
             ).map_err(|err| err.to_string())?;
             insert_event(&conn, &task_id, "completed", None, None)?;
+            restore_task_progress_order(&conn, &owner, &task_id)?;
         }
         return Ok(());
     }
@@ -949,6 +1156,7 @@ fn complete_task(
     )
     .map_err(|err| err.to_string())?;
     insert_event(&conn, &task_id, "completed", None, None)?;
+    restore_task_progress_order(&conn, &owner, &task_id)?;
     Ok(())
 }
 
@@ -967,6 +1175,7 @@ fn undo_complete_task(state: State<DbState>, owner: String, task_id: String) -> 
         conn.execute(sql, params![now, task_id, owner])
         .map_err(|err| err.to_string())?;
         insert_event(&conn, &task_id, "completion_undone", None, None)?;
+        sync_task_progress_order(&conn, &owner, &task_id)?;
         return Ok(());
     }
     if task.completed_at.is_none() {
@@ -978,19 +1187,30 @@ fn undo_complete_task(state: State<DbState>, owner: String, task_id: String) -> 
     )
     .map_err(|err| err.to_string())?;
     insert_event(&conn, &task_id, "completion_undone", None, None)?;
+    sync_task_progress_order(&conn, &owner, &task_id)?;
     Ok(())
 }
 
 #[tauri::command]
 fn reorder_tasks(state: State<DbState>, owner: String, ordered_ids: Vec<String>) -> Result<(), String> {
-    let owner = normalize_owner(&owner)?;
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    apply_reorder_tasks(&conn, &owner, &ordered_ids)
+}
+
+/// 手工拖拽排序：写入新的手工顺序，同时清空“进行中临时置顶”标记。
+/// 手工顺序优先级最高，因此拖拽会覆盖自动置顶；撤出时也不会再恢复旧位置。
+fn apply_reorder_tasks(
+    conn: &Connection,
+    owner: &str,
+    ordered_ids: &[String],
+) -> Result<(), String> {
+    let owner = normalize_owner(owner)?;
     let now = now_string();
     for (index, task_id) in ordered_ids.iter().enumerate() {
         conn.execute(
             "
             UPDATE tasks
-            SET sort_order = ?1, updated_at = ?2
+            SET sort_order = ?1, sort_order_before_progress = NULL, updated_at = ?2
             WHERE id = ?3 AND owner = ?4 AND archived_at IS NULL
             ",
             params![index as i64, now, task_id, owner],
@@ -1007,20 +1227,35 @@ fn rename_category_data(
     old_owner: String,
     new_owner: String,
 ) -> Result<(), String> {
-    let old_owner = normalize_owner(&old_owner)?;
-    let new_owner = normalize_owner(&new_owner)?;
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    apply_rename_category_data(&conn, &old_owner, &new_owner)
+}
+
+fn apply_rename_category_data(
+    conn: &Connection,
+    old_owner: &str,
+    new_owner: &str,
+) -> Result<(), String> {
+    let old_owner = normalize_owner(old_owner)?;
+    let new_owner = normalize_owner(new_owner)?;
     if old_owner == new_owner {
         return Ok(());
     }
 
-    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    let now = now_string();
     conn.execute(
         "
         UPDATE tasks
         SET owner = ?1, updated_at = ?2
         WHERE owner = ?3
         ",
-        params![new_owner, now_string(), old_owner],
+        params![new_owner, now, old_owner],
+    )
+    .map_err(|err| err.to_string())?;
+    // 周期规则同样以分类作为归属键，规则与自动生成实例一起改名。
+    conn.execute(
+        "UPDATE recurring_task_settings SET owner = ?1, updated_at = ?2 WHERE owner = ?3",
+        params![new_owner, now, old_owner],
     )
     .map_err(|err| err.to_string())?;
     Ok(())
@@ -1081,6 +1316,7 @@ fn archive_task(state: State<DbState>, owner: String, task_id: String, is_comple
         insert_event(&conn, &task_id, "completed", None, None)?;
     }
     insert_event(&conn, &task_id, "archived", None, None)?;
+    restore_task_progress_order(&conn, &owner, &task_id)?;
     Ok(())
 }
 
@@ -1106,6 +1342,7 @@ fn suspend_task(state: State<DbState>, owner: String, task_id: String) -> Result
     )
     .map_err(|err| err.to_string())?;
     insert_event(&conn, &task_id, "suspended", None, None)?;
+    restore_task_progress_order(&conn, &owner, &task_id)?;
     Ok(())
 }
 
@@ -1125,14 +1362,110 @@ fn activate_task(state: State<DbState>, owner: String, task_id: String) -> Resul
     )
     .map_err(|err| err.to_string())?;
     insert_event(&conn, &task_id, "activated", None, None)?;
+    restore_task_progress_order(&conn, &owner, &task_id)?;
     Ok(())
+}
+
+/// 进入「进行中」时把任务临时插到手工排序最顶部。
+///
+/// 正常手工排序值为非负；临时置顶统一使用负数，因此不需要挪动其他任务，
+/// 撤出时能把原值精确写回。手工拖拽会重写整张列表的非负排序，从而覆盖临时置顶。
+fn boost_task_progress_order(
+    conn: &Connection,
+    owner: &str,
+    task_id: &str,
+) -> Result<(), String> {
+    let current: Option<Option<i64>> = conn
+        .query_row(
+            "SELECT sort_order FROM tasks WHERE id = ?1 AND owner = ?2",
+            params![task_id, owner],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    let Some(current_rank) = current else {
+        return Err("任务不存在".to_string());
+    };
+    // 已经是临时置顶状态（负数）时不重复记录，避免覆盖进入前的位置。
+    if current_rank.is_some_and(|value| value < 0) {
+        return Ok(());
+    }
+
+    let min_rank: Option<i64> = conn
+        .query_row(
+            "SELECT MIN(sort_order) FROM tasks
+             WHERE owner = ?1 AND archived_at IS NULL AND deleted_at IS NULL
+               AND sort_order IS NOT NULL",
+            params![owner],
+            |row| row.get(0),
+        )
+        .map_err(|err| err.to_string())?;
+    let top_rank = min_rank.map_or(-1, |value| value.min(0) - 1);
+    conn.execute(
+        "UPDATE tasks
+         SET sort_order_before_progress = sort_order, sort_order = ?1, updated_at = ?2
+         WHERE id = ?3 AND owner = ?4",
+        params![top_rank, now_string(), task_id, owner],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+/// 撤出「进行中」时恢复进入前的手工排序位置（可能为空，回到自动排序区）。
+fn restore_task_progress_order(
+    conn: &Connection,
+    owner: &str,
+    task_id: &str,
+) -> Result<(), String> {
+    let row: Option<(Option<i64>, Option<i64>)> = conn
+        .query_row(
+            "SELECT sort_order, sort_order_before_progress
+             FROM tasks WHERE id = ?1 AND owner = ?2",
+            params![task_id, owner],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    let Some((current_rank, saved_rank)) = row else {
+        return Err("任务不存在".to_string());
+    };
+    if !current_rank.is_some_and(|value| value < 0) {
+        return Ok(());
+    }
+    conn.execute(
+        "UPDATE tasks
+         SET sort_order = ?1, sort_order_before_progress = NULL, updated_at = ?2
+         WHERE id = ?3 AND owner = ?4",
+        params![saved_rank, now_string(), task_id, owner],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+/// 按最新状态同步临时置顶：进行中则置顶，其他状态则恢复原手工位置。
+pub(crate) fn sync_task_progress_order(
+    conn: &Connection,
+    owner: &str,
+    task_id: &str,
+) -> Result<(), String> {
+    let task = query_task(conn, owner, task_id)?;
+    if task.archived_at.is_none() && task.status == "in_progress" {
+        boost_task_progress_order(conn, owner, task_id)
+    } else {
+        restore_task_progress_order(conn, owner, task_id)
+    }
 }
 
 #[tauri::command]
 fn start_task(state: State<DbState>, owner: String, task_id: String) -> Result<(), String> {
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
-    let owner = normalize_owner(&owner)?;
-    let task = query_task(&conn, &owner, &task_id)?;
+    apply_start_task(&conn, &owner, &task_id)
+}
+
+/// 手动标记“进行中”：写入状态后把任务临时置顶（进入前手工位置会保存，撤出时恢复）。
+fn apply_start_task(conn: &Connection, owner: &str, task_id: &str) -> Result<(), String> {
+    let owner = normalize_owner(owner)?;
+    let task = query_task(conn, &owner, task_id)?;
     if task.archived_at.is_some() || task.completed_at.is_some() {
         return Err("已完成或已归档任务不能开始执行".to_string());
     }
@@ -1146,12 +1479,15 @@ fn start_task(state: State<DbState>, owner: String, task_id: String) -> Result<(
         return Ok(());
     }
     let now = now_string();
-    conn.execute(
+    let tx = conn.unchecked_transaction().map_err(|err| err.to_string())?;
+    tx.execute(
         "UPDATE tasks SET started_at=?1, reactivated_at=NULL, updated_at=?1 WHERE id=?2 AND owner=?3",
         params![now, task_id, owner],
     )
     .map_err(|err| err.to_string())?;
-    insert_event(&conn, &task_id, "started", None, None)?;
+    insert_event(&tx, task_id, "started", None, None)?;
+    boost_task_progress_order(&tx, &owner, task_id)?;
+    tx.commit().map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -1185,6 +1521,7 @@ fn restore_archived_task(state: State<DbState>, owner: String, task_id: String, 
         }
         _ => return Err("当前任务状态不支持该操作".to_string()),
     }
+    sync_task_progress_order(&conn, &owner, &task_id)?;
     Ok(())
 }
 
@@ -1203,7 +1540,55 @@ fn delete_task(state: State<DbState>, owner: String, task_id: String) -> Result<
     if task.archived_at.is_none() { return Err("只能删除已归档任务".to_string()); }
     conn.execute("UPDATE tasks SET deleted_at=?1, updated_at=?1 WHERE id=?2 AND owner=?3", params![now_string(), task_id, owner]).map_err(|err| err.to_string())?;
     insert_event(&conn, &task_id, "deleted", None, Some(&task.title))?;
+    restore_task_progress_order(&conn, &owner, &task_id)?;
     Ok(())
+}
+
+/// 历史任务批量删除：一次事务内软删除多条归档任务，任一条不是已归档任务则整体回滚。
+#[tauri::command]
+fn delete_archived_tasks(state: State<DbState>, task_ids: Vec<String>) -> Result<usize, String> {
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    apply_delete_archived_tasks(&conn, &task_ids)
+}
+
+fn apply_delete_archived_tasks(conn: &Connection, task_ids: &[String]) -> Result<usize, String> {
+    let tx = conn.unchecked_transaction().map_err(|err| err.to_string())?;
+    let now = now_string();
+    let mut seen = HashSet::new();
+    let mut deleted = 0usize;
+    for raw_id in task_ids {
+        let task_id = raw_id.trim();
+        if task_id.is_empty() || !seen.insert(task_id.to_string()) {
+            continue;
+        }
+        let record: Option<(String, String, Option<String>, Option<String>)> = tx
+            .query_row(
+                "SELECT owner, title, archived_at, deleted_at FROM tasks WHERE id = ?1",
+                params![task_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(|err| err.to_string())?;
+        let Some((owner, title, archived_at, deleted_at)) = record else {
+            return Err(format!("任务不存在：{task_id}"));
+        };
+        if deleted_at.is_some() {
+            continue;
+        }
+        if archived_at.is_none() {
+            return Err("只能删除已归档任务".to_string());
+        }
+        tx.execute(
+            "UPDATE tasks SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2",
+            params![now, task_id],
+        )
+        .map_err(|err| err.to_string())?;
+        insert_event(&tx, task_id, "deleted", None, Some(&title))?;
+        restore_task_progress_order(&tx, &owner, task_id)?;
+        deleted += 1;
+    }
+    tx.commit().map_err(|err| err.to_string())?;
+    Ok(deleted)
 }
 
 #[tauri::command]
@@ -1278,21 +1663,64 @@ fn list_recurring_task_settings(state: State<DbState>, owner: String) -> Result<
 fn update_recurring_task_setting(
     state: State<DbState>, owner: String, setting_id: String, title: String, _is_urgent: bool,
     date_range_type: String, start_date: String, end_date: Option<String>, frequency_type: String,
-    weekdays: Vec<i64>, generate_time: String, repeat_count: i64,
+    weekdays: Vec<i64>, generate_time: String, repeat_count: i64, new_owner: Option<String>,
 ) -> Result<RecurringTaskSetting, String> {
     let owner = normalize_owner(&owner)?;
     validate_recurring_setting(&title, &date_range_type, &start_date, end_date.as_deref(), &frequency_type, &weekdays, &generate_time, repeat_count)?;
+    let target_owner = match new_owner.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        Some(target) => normalize_owner(target)?,
+        None => owner.clone(),
+    };
     let conn = state.conn.lock().map_err(|err| err.to_string())?;
-    let current = query_recurring_setting(&conn, &owner, &setting_id)?;
+    let tx = conn.unchecked_transaction().map_err(|err| err.to_string())?;
+    let current = query_recurring_setting(&tx, &owner, &setting_id)?;
     if current.status == "已作废" { return Err("已作废的周期任务规则不可编辑".to_string()); }
-    let affected = conn.execute(
+    let affected = tx.execute(
         "UPDATE recurring_task_settings SET title=?1, is_urgent=?2, date_range_type=?3, start_date=?4, end_date=?5, frequency_type=?6, weekdays=?7, generate_time=?8, repeat_count=?9, updated_at=?10 WHERE id=?11 AND owner=?12",
         params![title.trim(), 0_i64, date_range_type, start_date, end_date, frequency_type, weekdays_to_string(&weekdays), generate_time, repeat_count, now_string(), setting_id, owner],
     ).map_err(|err| err.to_string())?;
     if affected == 0 { return Err("周期任务设置不存在".to_string()); }
-    conn.execute("INSERT INTO recurring_setting_events (setting_id,event_type,created_at) VALUES (?1,'updated',?2)", params![setting_id, now_string()]).map_err(|err| err.to_string())?;
-    refresh_recurring_tasks(&conn, &owner)?;
-    query_recurring_setting(&conn, &owner, &setting_id)
+
+    if target_owner != owner {
+        // 规则改分类：规则、已生成的实例任务一起迁移，保证规则详情里的相关任务完整。
+        move_recurring_setting_owner(&tx, &owner, &setting_id, &target_owner)?;
+    }
+
+    tx.execute("INSERT INTO recurring_setting_events (setting_id,event_type,created_at) VALUES (?1,'updated',?2)", params![setting_id, now_string()]).map_err(|err| err.to_string())?;
+    refresh_recurring_tasks(&tx, &target_owner)?;
+    tx.commit().map_err(|err| err.to_string())?;
+    query_recurring_setting(&conn, &target_owner, &setting_id)
+}
+
+/// 把周期规则及其已生成的任务实例迁移到另一个分类。
+/// 任务历史与生命周期事件随 task_id 保留；规则层记录一条分类变更日志。
+fn move_recurring_setting_owner(
+    conn: &Connection,
+    owner: &str,
+    setting_id: &str,
+    new_owner: &str,
+) -> Result<(), String> {
+    let setting = query_recurring_setting(conn, owner, setting_id)?;
+    if setting.owner == new_owner {
+        return Ok(());
+    }
+    let now = now_string();
+    conn.execute(
+        "UPDATE recurring_task_settings SET owner = ?1, updated_at = ?2 WHERE id = ?3 AND owner = ?4",
+        params![new_owner, now, setting_id, owner],
+    )
+    .map_err(|err| err.to_string())?;
+    conn.execute(
+        "UPDATE tasks SET owner = ?1, updated_at = ?2 WHERE recurring_setting_id = ?3",
+        params![new_owner, now, setting_id],
+    )
+    .map_err(|err| err.to_string())?;
+    conn.execute(
+        "INSERT INTO recurring_setting_events (setting_id, event_type, created_at) VALUES (?1, 'owner_changed', ?2)",
+        params![setting_id, now],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1818,6 +2246,7 @@ fn auto_archive_completed_tasks(conn: &Connection, owner: &str) -> Result<(), St
         )
         .map_err(|err| err.to_string())?;
         insert_event(conn, &task_id, "archived", None, Some("auto"))?;
+        restore_task_progress_order(conn, owner, &task_id)?;
     }
     Ok(())
 }
@@ -1852,6 +2281,8 @@ fn record_task_start_events(conn: &Connection, owner: &str) -> Result<(), String
         .collect();
     for (task_id, start_at) in due {
         insert_event(conn, &task_id, "started", None, Some(&start_at))?;
+        // 未来任务到点自动变为进行中时，同样记录原手工位置并临时置顶。
+        sync_task_progress_order(conn, owner, &task_id)?;
     }
     Ok(())
 }
@@ -1882,6 +2313,7 @@ fn refresh_recurring_tasks(conn: &Connection, owner: &str) -> Result<(), String>
         ).map_err(|err| err.to_string())?;
         for task_id in &past_ids {
             insert_event(conn, task_id, "archived", None, Some("auto"))?;
+            restore_task_progress_order(conn, owner, task_id)?;
         }
     }
     let mut stmt = conn.prepare(
@@ -2183,6 +2615,25 @@ fn is_duplicate_column_error(err: &rusqlite::Error) -> bool {
 #[cfg(test)]
 mod local_hardening_tests {
     use super::*;
+
+    fn task_order_state(conn: &Connection, task_id: &str) -> (Option<i64>, Option<i64>) {
+        conn.query_row(
+            "SELECT sort_order, sort_order_before_progress FROM tasks WHERE id = ?1",
+            params![task_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("读取任务排序状态")
+    }
+
+    fn insert_sort_task(conn: &Connection, id: &str, sort_order: Option<i64>) {
+        conn.execute(
+            "INSERT INTO tasks (id, owner, title, is_urgent, created_at, updated_at, sort_order)
+             VALUES (?1, '工作', ?2, 0, '2026-01-01T00:00:00+00:00',
+                     '2026-01-01T00:00:00+00:00', ?3)",
+            params![id, format!("任务{id}"), sort_order],
+        )
+        .expect("写入任务");
+    }
 
     fn recurring_setting(
         start_date: &str,
@@ -2567,6 +3018,342 @@ mod local_hardening_tests {
             )
             .expect("统计关联任务");
         assert_eq!(linked, 1);
+    }
+
+    /// 已归档任务只允许改标题与分类，状态字段必须保持原样。
+    #[test]
+    fn archived_task_edit_only_changes_title_and_category() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化表结构");
+        conn.execute(
+            "INSERT INTO tasks
+               (id, owner, title, is_urgent, created_at, updated_at, completed_at, archived_at, start_at)
+             VALUES ('t1', '工作', '原标题', 1,
+                     '2026-01-01T00:00:00+00:00', '2026-01-02T00:00:00+00:00',
+                     '2026-01-02T00:00:00+00:00', '2026-01-03T00:00:00+00:00',
+                     '2026-01-05T00:00:00+00:00')",
+            [],
+        )
+        .expect("写入归档任务");
+        insert_event(&conn, "t1", "created", None, Some("原标题")).expect("创建日志");
+
+        let updated = apply_update_archived_task(&conn, "工作", "t1", "改名后的任务", Some("学习"))
+            .expect("编辑归档任务");
+        assert_eq!(updated.title, "改名后的任务");
+        assert_eq!(updated.owner, "学习");
+        assert_eq!(updated.status, "completed", "保存后不应改变归档状态");
+        assert_eq!(
+            updated.completed_at.as_deref(),
+            Some("2026-01-02T00:00:00+00:00"),
+            "完成时间不应被修改"
+        );
+        assert_eq!(
+            updated.archived_at.as_deref(),
+            Some("2026-01-03T00:00:00+00:00"),
+            "归档时间不应被修改"
+        );
+        assert!(updated.is_urgent, "其他字段不应被修改");
+
+        let event_types: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT event_type FROM task_events WHERE task_id = 't1' ORDER BY id ASC",
+                )
+                .expect("查询日志");
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .expect("读取日志");
+            rows.collect::<rusqlite::Result<Vec<_>>>().expect("收集日志")
+        };
+        assert_eq!(event_types, vec!["created", "title_changed", "owner_changed"]);
+
+        // 未归档任务不能走归档编辑入口。
+        conn.execute(
+            "INSERT INTO tasks (id, owner, title, is_urgent, created_at, updated_at)
+             VALUES ('t2', '工作', '未归档任务', 0,
+                     '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')",
+            [],
+        )
+        .expect("写入未归档任务");
+        assert!(apply_update_archived_task(&conn, "工作", "t2", "改名", None).is_err());
+        // 空名称无效
+        assert!(apply_update_archived_task(&conn, "学习", "t1", "   ", None).is_err());
+    }
+
+    /// 分类重命名时，该分类下的任务与周期规则必须一起改归属。
+    #[test]
+    fn category_rename_moves_tasks_and_recurring_rules() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化表结构");
+        let now = "2026-01-01T00:00:00+00:00";
+        conn.execute(
+            "INSERT INTO recurring_task_settings
+               (id, owner, title, is_urgent, date_range_type, start_date, end_date,
+                frequency_type, weekdays, generate_time, repeat_count, created_at, updated_at)
+             VALUES ('setting-1', '旧分类', '每日任务', 0, 'long', '2026-01-01', NULL,
+                     'daily', '0', '06:00', 1, ?1, ?1)",
+            params![now],
+        )
+        .expect("写入周期规则");
+        conn.execute(
+            "INSERT INTO tasks (id, owner, title, is_urgent, created_at, updated_at, recurring_setting_id, occurrence_date)
+             VALUES ('task-1', '旧分类', '每日任务（2026-01-01）', 0, ?1, ?1, 'setting-1', '2026-01-01')",
+            params![now],
+        )
+        .expect("写入任务");
+
+        apply_rename_category_data(&conn, "旧分类", "新分类").expect("重命名分类");
+
+        let task_owner: String = conn
+            .query_row("SELECT owner FROM tasks WHERE id = 'task-1'", [], |row| row.get(0))
+            .expect("读取任务分类");
+        assert_eq!(task_owner, "新分类");
+        let setting = query_recurring_setting(&conn, "新分类", "setting-1").expect("读取规则");
+        assert_eq!(setting.owner, "新分类");
+    }
+
+    /// 周期规则改分类：规则与已生成实例一起迁移，后续生成的任务继承新分类。
+    #[test]
+    fn recurring_setting_category_move_keeps_instances_and_generation_owner() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化表结构");
+
+        let today = Local::now().date_naive();
+        let weekday_index = today.weekday().num_days_from_monday().to_string();
+        let now = now_string();
+        for setting_id in ["setting-1", "setting-2"] {
+            conn.execute(
+                "INSERT INTO recurring_task_settings
+                   (id, owner, title, is_urgent, date_range_type, start_date, end_date,
+                    frequency_type, weekdays, generate_time, repeat_count, created_at, updated_at)
+                 VALUES (?1, '工作', '每日任务', 0, 'long', ?2, NULL,
+                         'daily', ?3, '00:00', 1, ?4, ?4)",
+                params![setting_id, today.to_string(), weekday_index, now],
+            )
+            .expect("写入周期规则");
+        }
+        conn.execute(
+            "INSERT INTO tasks
+               (id, owner, title, is_urgent, created_at, updated_at, recurring_setting_id, occurrence_date)
+             VALUES ('instance-1', '工作', '已有实例', 0, ?1, ?1, 'setting-1', ?2)",
+            params![now, today.to_string()],
+        )
+        .expect("写入周期实例");
+
+        move_recurring_setting_owner(&conn, "工作", "setting-1", "学习").expect("迁移规则");
+        let setting = query_recurring_setting(&conn, "学习", "setting-1").expect("读取迁移后的规则");
+        assert_eq!(setting.owner, "学习");
+        let instance_owner: String = conn
+            .query_row("SELECT owner FROM tasks WHERE id = 'instance-1'", [], |row| {
+                row.get(0)
+            })
+            .expect("读取实例分类");
+        assert_eq!(instance_owner, "学习", "已生成实例应随规则迁移");
+
+        // 把 setting-2 也迁到学习，再刷新：新生成的任务必须使用规则所属分类。
+        move_recurring_setting_owner(&conn, "工作", "setting-2", "学习").expect("迁移规则2");
+        refresh_recurring_tasks(&conn, "学习").expect("刷新周期任务");
+        let generated_owner: String = conn
+            .query_row(
+                "SELECT owner FROM tasks WHERE recurring_setting_id = 'setting-2'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("读取自动生成任务");
+        assert_eq!(generated_owner, "学习", "自动生成任务应继承规则所属分类");
+    }
+
+    /// 历史批量删除：跨分类只删归档任务，混入未归档任务时整体回滚。
+    #[test]
+    fn batch_delete_archived_tasks_is_atomic_and_cross_category() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化表结构");
+        let now = "2026-01-01T00:00:00+00:00";
+        conn.execute(
+            "INSERT INTO tasks (id, owner, title, is_urgent, created_at, updated_at, archived_at)
+             VALUES ('archived-a', '工作', '归档A', 0, ?1, ?1, ?1),
+                    ('archived-b', '学习', '归档B', 0, ?1, ?1, ?1)",
+            params![now],
+        )
+        .expect("写入归档任务");
+        conn.execute(
+            "INSERT INTO tasks (id, owner, title, is_urgent, created_at, updated_at)
+             VALUES ('active-c', '工作', '未归档C', 0, ?1, ?1)",
+            params![now],
+        )
+        .expect("写入未归档任务");
+
+        assert_eq!(query_all_archived_tasks(&conn).expect("查询历史").len(), 2);
+
+        // 混入未归档任务：整体失败，不删除任何数据。
+        assert!(apply_delete_archived_tasks(
+            &conn,
+            &["archived-a".to_string(), "active-c".to_string()]
+        )
+        .is_err());
+        let deleted_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(1) FROM tasks WHERE deleted_at IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .expect("统计删除");
+        assert_eq!(deleted_count, 0);
+
+        let count = apply_delete_archived_tasks(
+            &conn,
+            &["archived-a".to_string(), "archived-b".to_string(), "archived-a".to_string()],
+        )
+        .expect("批量删除");
+        assert_eq!(count, 2);
+        assert!(query_all_archived_tasks(&conn).expect("查询历史").is_empty());
+        let deleted_events: i64 = conn
+            .query_row(
+                "SELECT COUNT(1) FROM task_events WHERE event_type = 'deleted'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("统计删除日志");
+        assert_eq!(deleted_events, 2);
+    }
+
+    /// 进行中临时置顶：记录原手工位置，撤出后精确恢复；手工拖拽会覆盖该临时状态。
+    #[test]
+    fn progress_entry_boosts_and_exit_restores_manual_order() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化表结构");
+        insert_sort_task(&conn, "task-a", Some(0));
+        insert_sort_task(&conn, "task-b", Some(1));
+        insert_sort_task(&conn, "task-c", Some(2));
+        insert_sort_task(&conn, "task-d", None);
+
+        apply_start_task(&conn, "工作", "task-b").expect("标记进行中");
+        assert_eq!(task_order_state(&conn, "task-b"), (Some(-1), Some(1)));
+        assert_eq!(task_order_state(&conn, "task-a"), (Some(0), None));
+        assert_eq!(task_order_state(&conn, "task-c"), (Some(2), None));
+
+        // 多个进行中任务依次插到最前，各自保留进入前的位置。
+        apply_start_task(&conn, "工作", "task-a").expect("第二个进行中");
+        assert_eq!(task_order_state(&conn, "task-a"), (Some(-2), Some(0)));
+        assert_eq!(task_order_state(&conn, "task-b"), (Some(-1), Some(1)));
+
+        // 挂起 b：恢复进入前的手工位置。
+        conn.execute(
+            "UPDATE tasks SET suspended_at = '2026-01-02T00:00:00+00:00' WHERE id = 'task-b'",
+            [],
+        )
+        .expect("挂起任务");
+        sync_task_progress_order(&conn, "工作", "task-b").expect("撤出进行中");
+        assert_eq!(task_order_state(&conn, "task-b"), (Some(1), None));
+        assert_eq!(task_order_state(&conn, "task-a"), (Some(-2), Some(0)));
+
+        // 完成 a：同样恢复原位。
+        conn.execute(
+            "UPDATE tasks SET completed_at = '2026-01-02T00:00:00+00:00' WHERE id = 'task-a'",
+            [],
+        )
+        .expect("完成任务");
+        sync_task_progress_order(&conn, "工作", "task-a").expect("完成撤出");
+        assert_eq!(task_order_state(&conn, "task-a"), (Some(0), None));
+
+        // 原本没有手工排序的任务，撤出后回到空排序（自动排序区）。
+        apply_start_task(&conn, "工作", "task-d").expect("无手工排序任务进行中");
+        assert_eq!(task_order_state(&conn, "task-d"), (Some(-1), None));
+        conn.execute(
+            "UPDATE tasks SET suspended_at = '2026-01-02T00:00:00+00:00' WHERE id = 'task-d'",
+            [],
+        )
+        .expect("挂起任务");
+        sync_task_progress_order(&conn, "工作", "task-d").expect("撤出进行中");
+        assert_eq!(task_order_state(&conn, "task-d"), (None, None));
+    }
+
+    /// 未来任务到点自动进行中也要临时置顶。
+    #[test]
+    fn auto_started_future_task_gets_progress_boost() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化表结构");
+        insert_sort_task(&conn, "task-a", Some(3));
+        conn.execute(
+            "INSERT INTO tasks
+               (id, owner, title, is_urgent, created_at, updated_at, start_at)
+             VALUES ('future', '工作', '未来任务', 0,
+                     '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00',
+                     '2020-01-01T00:00:00+00:00')",
+            [],
+        )
+        .expect("写入未来任务");
+
+        record_task_start_events(&conn, "工作").expect("到点记录开始事件");
+        let (sort_order, saved) = task_order_state(&conn, "future");
+        assert!(sort_order.is_some_and(|value| value < 0), "自动进行中应临时置顶");
+        assert_eq!(saved, None);
+    }
+
+    /// 手工拖拽后手工顺序优先：临时置顶被覆盖，撤出不再恢复旧位置。
+    #[test]
+    fn manual_reorder_overrides_progress_boost() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化表结构");
+        insert_sort_task(&conn, "task-a", Some(0));
+        insert_sort_task(&conn, "task-b", Some(1));
+        insert_sort_task(&conn, "task-c", Some(2));
+
+        apply_start_task(&conn, "工作", "task-b").expect("标记进行中");
+        assert_eq!(task_order_state(&conn, "task-b"), (Some(-1), Some(1)));
+
+        // 用户手工把 b 拖到列表中间：写入新的手工顺序并清除临时置顶。
+        apply_reorder_tasks(
+            &conn,
+            "工作",
+            &[
+                "task-a".to_string(),
+                "task-b".to_string(),
+                "task-c".to_string(),
+            ],
+        )
+        .expect("手工排序");
+        assert_eq!(task_order_state(&conn, "task-b"), (Some(1), None));
+
+        // 之后 b 撤出进行中，保持手工位置而不是回到进入前的 1 以外的旧值。
+        conn.execute(
+            "UPDATE tasks SET completed_at = '2026-01-02T00:00:00+00:00' WHERE id = 'task-b'",
+            [],
+        )
+        .expect("完成任务");
+        sync_task_progress_order(&conn, "工作", "task-b").expect("撤出进行中");
+        assert_eq!(task_order_state(&conn, "task-b"), (Some(1), None));
+    }
+
+    /// 升级初始化只执行一次：之后的启动不会把用户手工拖拽结果重新置顶。
+    #[test]
+    fn progress_boost_initialization_is_one_time() {
+        let conn = Connection::open_in_memory().expect("内存库");
+        configure_connection(&conn).expect("配置连接");
+        migrate(&conn).expect("初始化表结构");
+        insert_sort_task(&conn, "task-a", Some(5));
+        conn.execute(
+            "UPDATE tasks SET started_at = '2026-01-01T00:00:00+00:00' WHERE id = 'task-a'",
+            [],
+        )
+        .expect("设为进行中");
+
+        initialize_progress_boost(&conn).expect("首次初始化");
+        let (boosted, saved) = task_order_state(&conn, "task-a");
+        assert!(boosted.is_some_and(|value| value < 0));
+        assert_eq!(saved, Some(5));
+
+        // 用户手工拖拽覆盖置顶后再启动，不应重新置顶。
+        apply_reorder_tasks(&conn, "工作", &["task-a".to_string()]).expect("手工排序");
+        initialize_progress_boost(&conn).expect("再次初始化");
+        assert_eq!(task_order_state(&conn, "task-a"), (Some(0), None));
     }
 
     #[cfg(windows)]

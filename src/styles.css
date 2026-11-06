@@ -1046,6 +1046,10 @@ h1 {
   border-bottom: 1.5px dashed var(--line);
 }
 
+.history-list.is-selecting .history-item {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
 .history-main {
   display: grid;
   gap: 3px;
@@ -1865,6 +1869,7 @@ h1 {
 }
 
 .about-version {
+  display: inline-block;
   justify-self: start;
   padding: 2px 10px;
   color: var(--chip-tan-ink);
@@ -1965,10 +1970,414 @@ h1 {
   border-bottom-style: solid;
 }
 
-.about-foot {
-  margin: 4px 0 0;
+/* --------------------------------------------------------------------------
+   数据管理：数据版本 + 导出 / 导入
+   -------------------------------------------------------------------------- */
+
+.data-management-view {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.data-version-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 13px;
+  background: rgba(255, 255, 255, 0.32);
+  border: 1.2px dashed rgba(126, 100, 44, 0.32);
+  border-radius: 10px;
+}
+
+.data-version-value {
+  color: var(--ink);
+  font-family: var(--font-hand);
+  font-size: 19px;
+  font-weight: var(--hand-weight, 600);
+  line-height: 1.3;
+}
+
+.data-version-hint,
+.data-stats {
   color: var(--ink-faint);
   font-family: var(--font-ui);
   font-size: 11.5px;
-  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
+.data-action-card {
+  display: grid;
+  gap: 7px;
+  padding: 12px 13px;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1.2px solid rgba(126, 100, 44, 0.18);
+  border-radius: 10px;
+}
+
+.data-action-card h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-hand);
+  font-size: 18px;
+  font-weight: var(--hand-weight, 600);
+  line-height: 1.3;
+}
+
+.data-action-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.data-action-card .primary-action {
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.data-import-preview {
+  display: grid;
+  gap: 9px;
+}
+
+.data-import-file {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  overflow-wrap: anywhere;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  line-height: 1.5;
+  background: rgba(255, 252, 228, 0.5);
+  border-radius: 8px;
+}
+
+.data-import-file strong {
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.data-import-prefs {
+  color: var(--chip-tan-ink);
+}
+
+.data-import-warning {
+  margin: 0;
+  color: #a34432;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.data-import-actions {
+  display: grid;
+  gap: 7px;
+}
+
+.data-import-mode {
+  display: grid;
+  gap: 2px;
+  padding: 9px 11px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1.2px solid rgba(126, 100, 44, 0.24);
+  border-radius: 9px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.data-import-mode:hover {
+  background: var(--paper-hi);
+  border-color: rgba(126, 100, 44, 0.48);
+}
+
+.data-import-mode:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.data-import-mode strong {
+  color: var(--ink);
+  font-family: var(--font-hand);
+  font-size: 15px;
+  font-weight: var(--hand-weight, 600);
+}
+
+.data-import-mode span {
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.data-import-cancel {
+  justify-self: start;
+}
+
+.data-management-foot {
+  margin: 2px 0 6px;
+  color: var(--ink-faint);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+   历史任务：类型筛选 + 名称检索
+   -------------------------------------------------------------------------- */
+
+.history-toolbar {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.history-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.history-category-select {
+  min-width: 0;
+  padding: 5px 8px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1.3px solid rgba(126, 100, 44, 0.22);
+  border-radius: 8px;
+}
+
+.history-filter {
+  justify-self: start;
+}
+
+.history-selection-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.history-selected-count {
+  margin-right: auto;
+  color: var(--ink-faint);
+}
+
+.history-select {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: #7a5e28;
+  cursor: pointer;
+}
+
+.history-filter button {
+  padding: 4px 10px;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  text-align: center;
+  border-radius: 999px;
+}
+
+.history-filter button.active {
+  color: var(--ink);
+  background: var(--paper-hi);
+  box-shadow: 0 1px 3px rgba(74, 56, 18, 0.18);
+}
+
+.history-search {
+  width: 100%;
+  padding: 7px 10px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  background: rgba(255, 252, 228, 0.32);
+  border: 1.4px solid rgba(126, 100, 44, 0.22);
+  border-radius: 9px;
+  outline: none;
+}
+
+.history-search-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.history-search-row .history-search {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.history-select-toggle {
+  flex: 0 0 auto;
+  padding: 6px 11px;
+  font-size: 12.5px;
+  border: 1.2px dashed rgba(126, 100, 44, 0.3);
+  border-radius: 999px;
+}
+
+.history-search:focus {
+  border-color: rgba(126, 100, 44, 0.5);
+  box-shadow: 0 0 0 3px rgba(126, 100, 44, 0.1);
+}
+
+.history-search::placeholder {
+  color: var(--ink-faint);
+}
+
+/* --------------------------------------------------------------------------
+   任务合并
+   -------------------------------------------------------------------------- */
+
+.merge-tasks-view {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.merge-hint {
+  margin: 0;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.merge-task-list {
+  display: grid;
+  gap: 6px;
+}
+
+.merge-task-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 9px 10px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1.2px solid rgba(126, 100, 44, 0.18);
+  border-radius: 9px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.merge-task-row:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.merge-task-row.selected {
+  background: var(--paper-hi);
+  border-color: rgba(126, 100, 44, 0.5);
+  box-shadow: 0 2px 8px -4px rgba(74, 56, 18, 0.3);
+}
+
+.merge-task-row input {
+  width: 15px;
+  height: 15px;
+  margin: 4px 0 0;
+  accent-color: #7a5e28;
+  cursor: pointer;
+}
+
+.merge-task-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.merge-task-title {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-family: var(--font-hand);
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.merge-task-title.done {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
+
+.merge-task-meta {
+  color: var(--ink-faint);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.merge-editor {
+  display: grid;
+  gap: 10px;
+  padding: 12px 13px;
+  background: rgba(255, 255, 255, 0.28);
+  border: 1.2px dashed rgba(126, 100, 44, 0.3);
+  border-radius: 10px;
+}
+
+.merge-selection-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   分类排序 / 任务详情分类标签
+   -------------------------------------------------------------------------- */
+
+.category-order {
+  display: flex;
+  gap: 1px;
+  align-items: center;
+  margin-right: 2px;
+}
+
+.category-order-button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1.2px dashed rgba(126, 100, 44, 0.28);
+  border-radius: 6px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.category-order-button:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--paper-hi);
+}
+
+.category-order-button:disabled {
+  cursor: default;
+  opacity: 0.28;
+}
+
+.detail-category-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  color: var(--chip-tan-ink);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--chip-tan-bg);
+  border-radius: 999px;
 }

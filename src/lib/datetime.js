@@ -87,6 +87,22 @@ export function formatTimeValue(value) {
   return formatDeadline(value);
 }
 
+/** 精确时间戳展示（含年份与秒），用于数据版本、备份导出时间等场景。 */
+export function formatTimestamp(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
 // 生命周期排序：仅日期事件视为该日末尾，排在当天有具体时间的事件之后；
 // 同一时间再按事件 id 保证顺序稳定。
 export function compareEventTime(a, b) {

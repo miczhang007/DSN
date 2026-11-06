@@ -88,9 +88,29 @@ export function useCategories({ currentCategory, view, openConfirmation, resetDe
     editCategoryDraft.value = category;
   }
 
+  // 分类列表顺序即标签与分类管理页的展示顺序，上下移后立即持久化。
+  function moveCategory(category, offset) {
+    const index = categories.value.indexOf(category);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= categories.value.length) return;
+    const next = [...categories.value];
+    next.splice(index, 1);
+    next.splice(target, 0, category);
+    categories.value = next;
+    saveCategories(next);
+  }
+
   function cancelEditCategory() {
     editingCategory.value = "";
     editCategoryDraft.value = "";
+  }
+
+  // 只切换当前分类并持久化，不改变当前视图；用于打开其他分类的历史任务详情。
+  function adoptCategory(category) {
+    const target = normalizeCategoryName(category);
+    if (!target || target === currentCategory.value) return;
+    currentCategory.value = target;
+    saveCurrentCategory(target);
   }
 
   async function saveCategoryName(oldCategory) {
@@ -146,8 +166,10 @@ export function useCategories({ currentCategory, view, openConfirmation, resetDe
     openCategoryForm,
     closeCategoryForm,
     switchCategory,
+    adoptCategory,
     startEditCategory,
     cancelEditCategory,
+    moveCategory,
     saveCategoryName,
     deleteCategory,
     removeCategory,

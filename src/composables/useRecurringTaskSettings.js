@@ -16,6 +16,7 @@ import { localDateInputValue } from "../lib/datetime.js";
  * @param {import("vue").Ref<string>}  deps.expandedHistoryTaskId
  * @param {Function} deps.openConfirmation      打开应用内确认弹窗
  * @param {Function} deps.refreshActiveTasks
+ * @param {Function} deps.switchCategory         规则改分类后切换到新分类
  * @param {object}   deps.draft                 新增任务草稿（新建周期规则时作为初值来源）
  * @param {Function} deps.openCategoryManager
  */
@@ -27,6 +28,7 @@ export function useRecurringTaskSettings({
   expandedHistoryTaskId,
   openConfirmation,
   refreshActiveTasks,
+  switchCategory,
   draft,
   openCategoryManager,
 }) {
@@ -41,6 +43,7 @@ export function useRecurringTaskSettings({
   const recurringReturnView = ref("home");
   const recurringDraft = reactive({
     title: "",
+    category: "",
     isUrgent: false,
     dateRangeType: "long",
     startDate: localDateInputValue(),
@@ -94,6 +97,7 @@ export function useRecurringTaskSettings({
       setting || {
         id: "",
         title: draft.title,
+        owner: currentCategory.value,
         is_urgent: draft.isUrgent,
         date_range_type: draft.dateRangeType,
         start_date: draft.startDate,
@@ -106,6 +110,7 @@ export function useRecurringTaskSettings({
     selectedRecurringSettingId.value = source.id;
     recurringReturnView.value = view.value;
     recurringDraft.title = source.title;
+    recurringDraft.category = source.owner || currentCategory.value;
     recurringDraft.isUrgent = false;
     recurringDraft.dateRangeType = source.date_range_type;
     recurringDraft.startDate = source.start_date;
@@ -145,8 +150,8 @@ export function useRecurringTaskSettings({
   }
 
   async function saveRecurringSetting() {
+    const targetCategory = recurringDraft.category || currentCategory.value;
     const payload = {
-      owner: currentCategory.value,
       title: recurringDraft.title,
       isUrgent: false,
       dateRangeType: recurringDraft.dateRangeType,
@@ -157,18 +162,35 @@ export function useRecurringTaskSettings({
       repeatCount: recurringDraft.repeatCount,
       generateTime: recurringDraft.generateTime,
     };
+    const movedCategory = targetCategory !== currentCategory.value;
     if (selectedRecurringSettingId.value) {
       if (recurringDraft.status === "已作废") return;
       const updated = await invoke("update_recurring_task_setting", {
         ...payload,
+        owner: currentCategory.value,
+        newOwner: movedCategory ? targetCategory : null,
         settingId: selectedRecurringSettingId.value,
       });
+      if (movedCategory) {
+        // 规则与其任务实例已迁移到新分类，切换过去继续查看。
+        await switchCategory(targetCategory);
+        await openRecurringSettings();
+        return;
+      }
       recurringSettings.value = recurringSettings.value.map((setting) =>
         setting.id === updated.id ? updated : setting,
       );
       if (recurringDetail.value?.id === updated.id) recurringDetail.value = updated;
     } else {
-      await invoke("create_recurring_task_setting", payload);
+      await invoke("create_recurring_task_setting", {
+        ...payload,
+        owner: targetCategory,
+      });
+      if (movedCategory) {
+        await switchCategory(targetCategory);
+        await openRecurringSettings();
+        return;
+      }
     }
     if (recurringReturnView.value === "recurring-settings") await openRecurringSettings();
     else {
@@ -178,7 +200,12 @@ export function useRecurringTaskSettings({
   }
 
   function recurringEventText(type) {
-    return { created: "创建规则", updated: "编辑规则", voided: "作废规则" }[type] || type;
+    return {
+      created: "创建规则",
+      updated: "编辑规则",
+      owner_changed: "规则所属分类变更",
+      voided: "作废规则",
+    }[type] || type;
   }
 
   function recurringFrequencyText(setting) {

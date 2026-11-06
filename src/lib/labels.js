@@ -63,6 +63,7 @@ export function eventText(event) {
     milestone_deleted: `删除节点：${formatTextValue(event.before_value)}`,
     completed: "完成任务",
     archived: event.after_value === "auto" ? "系统自动归档（隔天）" : "归档任务",
+    merged: `合并任务：合并自 ${formatTextValue(event.after_value)}`,
     completion_undone: "撤销完成",
     archive_undone: "撤销归档",
     deleted: "删除任务",

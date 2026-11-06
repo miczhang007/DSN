@@ -34,6 +34,8 @@ const SHAPES = {
   trash: ["M3.7 5h8.6", "M6.4 5V3.5h3.2V5", "M5.2 5l.7 7.5h4.2L10.8 5"],
   // 紧急标记
   alert: ["M8 3.2v6", "M8 11.3v.8"],
+  // 任务合并：两路汇入
+  merge: ["M4.1 3.4l3.9 4.3 3.9-4.3", "M8 7.7v4.9"],
   // 兜底：普通圆点
   dot: ["M8 6.2a1.8 1.8 0 0 1 0 3.6a1.8 1.8 0 0 1 0-3.6"],
 };
@@ -59,6 +61,7 @@ const ICON_BY_EVENT = {
   milestone_completed_undone: "undo",
   milestone_deleted: "trash",
   completed: "check",
+  merged: "merge",
   completion_undone: "undo",
   archived: "archive",
   archive_undone: "undo",

@@ -26,6 +26,10 @@ function applyFontClass(font) {
   FONT_CLASSES.forEach((name) => root.classList.toggle(name, name === `font-${font}`));
 }
 const DEFAULT_POSITION = "top-right";
+const SIZE_VALUES = new Set(["small", "medium", "large"]);
+const THEME_VALUES = new Set(["yellow", "blue", "green", "pink", "white"]);
+const FONT_VALUES = new Set(["xikai", "yingbi", "maobi", "xingshu", "kaishu"]);
+const POSITION_VALUES = new Set(["top-right", "top-left", "bottom-right", "bottom-left", "center"]);
 
 export function useNoteSettings({ closeMenu, notify } = {}) {
   const noteSize = ref(DEFAULT_SIZE);
@@ -111,6 +115,40 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
     }
   }
 
+  /** 导出用：界面、字体、签名等展示类个性化设置快照。 */
+  function getPreferences() {
+    return {
+      noteSize: noteSize.value,
+      noteTheme: noteTheme.value,
+      noteFont: noteFont.value,
+      noteSignature: noteSignature.value,
+      notePosition: notePosition.value,
+    };
+  }
+
+  /**
+   * 导入用：只接受合法值，避免备份中的异常值写入本地设置。
+   * 当前分类由数据管理逻辑在分类合并后单独处理。
+   */
+  async function applyPreferences(preferences) {
+    if (!preferences) return;
+    if (SIZE_VALUES.has(preferences.noteSize)) {
+      await changeNoteSize(preferences.noteSize);
+    }
+    if (THEME_VALUES.has(preferences.noteTheme)) {
+      changeNoteTheme(preferences.noteTheme);
+    }
+    if (FONT_VALUES.has(preferences.noteFont)) {
+      changeNoteFont(preferences.noteFont);
+    }
+    if (typeof preferences.noteSignature === "string") {
+      changeSignature(preferences.noteSignature);
+    }
+    if (POSITION_VALUES.has(preferences.notePosition)) {
+      await changeNotePosition(preferences.notePosition);
+    }
+  }
+
   return {
     noteSize,
     noteTheme,
@@ -129,5 +167,7 @@ export function useNoteSettings({ closeMenu, notify } = {}) {
     changeNotePosition,
     changeAutoStart,
     refreshAutoStartState,
+    getPreferences,
+    applyPreferences,
   };
 }

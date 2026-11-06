@@ -78,11 +78,13 @@
 
 ## 已生成产物
 
-产物目录：`D:\项目\sticky-note\outputs`
+产物目录（固定，不再变更）：`D:\项目\sticky-note\outputs`
 
-- `stickynote-setup.exe`
-- `Desktop Sticky Note_1.2.0.0_x64.msix`
-- `stickynote.exe`
+- `stickynote.exe`：便携版可执行文件，供日常运行与验证。
+- `stickynote-setup.exe`：Windows 安装包。
+- 历史 MSIX 包保留在 `outputs/archive/` 等位置，不作为当前发布产物。
+
+后续构建一律覆盖输出到该目录，不要每次更换输出位置。
 
 ## 已完成验证
 

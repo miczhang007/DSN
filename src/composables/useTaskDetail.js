@@ -25,6 +25,7 @@ const DRAG_THRESHOLD_PX = 5;
  * @param {import("vue").Ref<object>} deps.confirmation  确认弹窗状态
  * @param {import("vue").Ref<string>} deps.expandedHistoryTaskId
  * @param {Function} deps.refreshActiveTasks
+ * @param {Function} deps.reloadArchivedTasks     归档任务改分类后刷新历史列表
  * @param {Function} deps.openCategoryManager     未选择分类时跳转分类管理
  * @param {Function} deps.openConfirmation    打开应用内确认弹窗
  */
@@ -36,6 +37,7 @@ export function useTaskDetail({
   confirmation,
   expandedHistoryTaskId,
   refreshActiveTasks,
+  reloadArchivedTasks,
   openCategoryManager,
   openConfirmation,
 }) {
@@ -59,6 +61,9 @@ export function useTaskDetail({
   const progressDate = ref("");
   const progressTime = ref("");
   const detailEditOpen = ref(false);
+  // 已归档任务的受限编辑：只改名称与分类，状态保持不变。
+  const archivedEditOpen = ref(false);
+  const archivedEditDraft = reactive({ title: "", category: "" });
   const progressFormOpen = ref(false);
   const detailReturnView = ref("home");
   // 生命周期日志默认只展开任务主流程（创建/挂起/激活/进行中/完成/进度），
@@ -88,6 +93,9 @@ export function useTaskDetail({
     editDraft.category = task.owner || currentCategory.value;
     editDraft.isUrgent = Boolean(task.is_urgent);
     editDraft.isFuture = Boolean(task.start_at);
+    archivedEditOpen.value = false;
+    archivedEditDraft.title = task.title;
+    archivedEditDraft.category = task.owner || currentCategory.value;
     const startParts = splitIsoForInput(task.start_at);
     editDraft.startAt = startParts.date;
     editDraft.startAtTime = startParts.time;
@@ -103,15 +111,17 @@ export function useTaskDetail({
     const nowParts = nowLocalParts();
     progressDate.value = nowParts.date;
     progressTime.value = nowParts.time;
+    // 历史任务可能来自其他分类：读写任务数据时优先使用任务自身的分类。
+    const taskOwner = task.owner || currentCategory.value;
     taskEvents.value = await invoke("get_task_events", {
-      owner: currentCategory.value,
+      owner: taskOwner,
       taskId: task.id,
     });
     taskEvents.value = [...taskEvents.value].sort(compareEventTime);
     milestones.value = task.is_recurring
       ? []
       : await invoke("list_milestones", {
-          owner: currentCategory.value,
+          owner: taskOwner,
           taskId: task.id,
         });
     view.value = "detail";
@@ -122,11 +132,50 @@ export function useTaskDetail({
     selectedTask.value = null;
     taskEvents.value = [];
     milestones.value = [];
+    archivedEditOpen.value = false;
   }
 
   function toggleDetailEdit() {
     detailEditOpen.value = !detailEditOpen.value;
     if (!detailEditOpen.value) editingMilestoneId.value = null;
+  }
+
+  function toggleArchivedEdit() {
+    if (!selectedTask.value) return;
+    if (!archivedEditOpen.value) {
+      archivedEditDraft.title = selectedTask.value.title;
+      archivedEditDraft.category = selectedTask.value.owner || currentCategory.value;
+    }
+    archivedEditOpen.value = !archivedEditOpen.value;
+  }
+
+  async function saveArchivedTaskChanges() {
+    if (!selectedTask.value || !archivedEditDraft.title) return;
+    try {
+      const taskOwner = selectedTask.value.owner || currentCategory.value;
+      const targetCategory =
+        archivedEditDraft.category || selectedTask.value.owner || currentCategory.value;
+      const moved = targetCategory !== (selectedTask.value.owner || currentCategory.value);
+      const updated = await invoke("update_archived_task", {
+        owner: taskOwner,
+        taskId: selectedTask.value.id,
+        title: archivedEditDraft.title,
+        newOwner: moved ? targetCategory : null,
+      });
+      const returnView = detailReturnView.value;
+      archivedEditOpen.value = false;
+      if (moved) {
+        // 任务已迁移到其他分类：当前分类的历史列表里不再展示它。
+        selectedTask.value = null;
+        view.value = "history";
+        await reloadArchivedTasks?.();
+        return;
+      }
+      await openTask(updated);
+      detailReturnView.value = returnView;
+    } catch (err) {
+      if (notify) notify(err, "保存归档任务失败");
+    }
   }
 
   function toggleEditFutureTask() {
@@ -581,6 +630,8 @@ export function useTaskDetail({
     progressDate,
     progressTime,
     detailEditOpen,
+    archivedEditOpen,
+    archivedEditDraft,
     progressFormOpen,
     fullLogOpen,
     expandedEventId,
@@ -593,6 +644,8 @@ export function useTaskDetail({
     resetDetailState,
     detailAction,
     toggleDetailEdit,
+    toggleArchivedEdit,
+    saveArchivedTaskChanges,
     toggleEditFutureTask,
     completeTaskEntry,
     detailCompleteEntry,

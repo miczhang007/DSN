@@ -2,20 +2,25 @@
   <section class="content about-view" @click.stop>
     <div class="about-hero">
       <h2 class="about-name">{{ productFullName }}</h2>
-      <div class="about-meta-line">
-        <span class="about-version">{{ versionText }}</span>
-        <span v-if="updatedAt" class="about-updated">更新于 {{ updatedAt }}</span>
-      </div>
     </div>
 
-    <section class="about-release">
-      <h3 class="about-release-title">本版更新</h3>
-      <ul class="about-release-list">
-        <li v-for="note in releaseNotes" :key="note">{{ note }}</li>
-      </ul>
-    </section>
-
     <dl class="about-list">
+      <div>
+        <dt>版本</dt>
+        <dd><span class="about-version">{{ versionText }}</span></dd>
+      </div>
+      <div>
+        <dt>更新时间</dt>
+        <dd><span class="about-updated">{{ updatedAt || "未记录" }}</span></dd>
+      </div>
+      <div>
+        <dt>更新内容</dt>
+        <dd>
+          <ul class="about-release-list">
+            <li v-for="note in releaseNotes" :key="note">{{ note }}</li>
+          </ul>
+        </dd>
+      </div>
       <div>
         <dt>开发者</dt>
         <dd>miczhang（个人开发者）</dd>
@@ -41,8 +46,6 @@
         <dd>miczhang007@qq.com</dd>
       </div>
     </dl>
-
-    <p class="about-foot">桌面便签 · MIT 开源 · 数据仅存本机</p>
   </section>
 </template>
 
@@ -58,7 +61,7 @@ const props = defineProps({
 
 defineEmits(["open-external"]);
 
-// 把 `v1.5.0 - 2026-11-04 10:01` 拆成版本号与更新时间，分别展示。
+// 把 `v1.5.0 - 2026-11-06 14:34` 拆成版本号与更新时间，作为信息列表中的两行。
 const releaseMatch = computed(() => /^(v[\d.]+)\s*-\s*(.+)$/.exec(props.versionLabel || ""));
 const versionText = computed(() => releaseMatch.value?.[1] ?? props.versionLabel);
 const updatedAt = computed(() => releaseMatch.value?.[2] ?? "");

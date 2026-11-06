@@ -62,6 +62,13 @@ describe("生命周期事件文案", () => {
     expect(eventText({ event_type: "archived" })).toBe("归档任务");
   });
 
+  it("合并任务事件展示来源任务", () => {
+    expect(eventText({ event_type: "merged", after_value: "任务A、任务B" })).toBe(
+      "合并任务：合并自 任务A、任务B",
+    );
+    expect(eventText({ event_type: "merged" })).toBe("合并任务：合并自 无");
+  });
+
   it("未知事件类型原样返回，便于排查", () => {
     expect(eventText({ event_type: "some_future_event" })).toBe("some_future_event");
   });
